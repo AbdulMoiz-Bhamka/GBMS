@@ -1,8 +1,9 @@
+// src/pages/Dashboard/Dashboard.jsx
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { LogOut, ShieldCheck } from 'lucide-react'
-import { useAuth } from '../auth/useAuth'
-import { authService } from '../services/authService'
+import { useAuth } from '../../auth/useAuth'
+import { authService } from '../../services/authService'
 
 export default function DashboardPage() {
   const { token, user, logout } = useAuth()

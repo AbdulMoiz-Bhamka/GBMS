@@ -47,7 +47,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-
 def get_connection():
     if DB_USER and DB_PASSWORD:
         auth = f"UID={DB_USER};PWD={DB_PASSWORD};"
@@ -61,7 +60,7 @@ def get_connection():
             status_code=503,
             detail="Database is unavailable. Check the GBMS database connection settings.",
         ) from exc
-    
+
 
 def public_user(row):
     return {

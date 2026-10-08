@@ -8,7 +8,7 @@ import {
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './auth/useAuth'
 import ProtectedRoute from './auth/ProtectedRoute'
-import DashboardPage from './pages/Dashboard'
+import DashboardPage from './pages/Dashboard/Dashboard'
 import './App.css'
 
 const links = [
