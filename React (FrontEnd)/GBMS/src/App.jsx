@@ -204,11 +204,17 @@ function LandingPage() {
 }
 
 function App() {
-  return <Routes>
-    <Route path="/" element={<LandingPage />} />
-    <Route element={<ProtectedRoute />}><Route path="/dashboard" element={<DashboardPage />} /></Route>
-    <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes>
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
 
 export default App

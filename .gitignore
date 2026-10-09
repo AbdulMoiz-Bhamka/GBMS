@@ -1,0 +1,3 @@
+# pnpm local package store (ignored, not deleted)
+.pnpm-store/
+**/.pnpm-store/

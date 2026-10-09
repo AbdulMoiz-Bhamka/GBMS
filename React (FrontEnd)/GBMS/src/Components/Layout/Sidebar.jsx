@@ -1,11 +1,11 @@
 // src/Components/Layout/Sidebar.jsx
 
 import { NavLink } from 'react-router-dom'
-import { BarChart3, Warehouse, Layers3, ShoppingCart, ArrowUpRight, icons, User, Users, Wallet, Building2, ClipboardList } from 'lucide-react'
+import { BarChart3, Warehouse, Layers3, ShoppingCart, ArrowUpRight, Users, Wallet, Building2, ClipboardList, Settings, X } from 'lucide-react'
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
 
-    const navigationGroup = [
+    const navigationGroups = [
         {
             title: 'OVERVIEW',
             items: [
@@ -30,7 +30,7 @@ const Sidebar = () => {
             ],
         },
         {
-            title: 'ANALYITCS',
+            title: 'ANALYTICS',
             items: [
                 { label: 'Reports', path: '/report', icon: ClipboardList }
             ]
@@ -38,7 +38,9 @@ const Sidebar = () => {
     ]
 
     return (
-        <aside className="flex min-h-screen w-64 shrink-0 flex-col border-r border-[#e8edf0] bg-white px-4 py-5">
+        <>
+            {isOpen && <button type="button" aria-label="Close navigation menu" className="fixed inset-0 z-40 bg-slate-900/30 lg:hidden" onClick={onClose} />}
+            <aside className={`fixed inset-y-0 left-0 z-50 flex min-h-screen w-64 shrink-0 flex-col border-r border-[#e8edf0] bg-white px-4 py-5 transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
             <div className="mb-8 flex items-center gap-3 px-2">
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#345c74] text-lg font-bold text-white">
                     G
@@ -52,6 +54,7 @@ const Sidebar = () => {
                         Business Management
                     </p>
                 </div>
+                <button type="button" aria-label="Close navigation menu" onClick={onClose} className="ml-auto rounded-lg p-2 text-[#526574] hover:bg-[#f7f9fa] lg:hidden"><X size={18} /></button>
             </div>
 
             <nav className="flex-1 space-y-7">
@@ -69,6 +72,7 @@ const Sidebar = () => {
                                     <NavLink
                                         key={item.path}
                                         to={item.path}
+                                        onClick={onClose}
                                         className={({ isActive }) =>
                                             `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${isActive
                                                 ? 'bg-[#edf3f6] font-semibold text-[#345c74]'
@@ -95,7 +99,8 @@ const Sidebar = () => {
                     Settings
                 </button>
             </div>
-        </aside>
+            </aside>
+        </>
     )
 }
 

@@ -5391,3 +5391,93 @@ without looking at the code:
 If you can explain the answers and draw the flow from memory, you are
 ready for the next phase: **Super Admin User Management + Roles +
 Permissions**.
+
+------------------------------------------------------------------------
+
+# Dashboard shared layout update
+
+This section describes the dashboard layout that wraps the existing
+authenticated dashboard page. The landing page, login popover, and
+FastAPI/JWT authentication flow remain the same.
+
+## Authentication and route flow
+
+The landing page's login form calls `useAuth().login()`. `AuthContext`
+sends the username and password to FastAPI, stores the returned JWT in
+`sessionStorage`, and keeps the authenticated user in React state. On
+startup, `AuthContext` checks a stored token with the current-user API.
+`ProtectedRoute` waits for that check and renders its child route through
+`<Outlet />` only when a user is authenticated. Otherwise, it redirects
+to `/`.
+
+The route hierarchy in `src/App.jsx` is:
+
+```text
+/                         LandingPage
+ProtectedRoute            checks authentication
+└── AdminLayout           shared sidebar and topbar
+    └── /dashboard        DashboardPage inside AdminLayout's Outlet
+```
+
+`src/main.jsx` creates one `BrowserRouter` and one `AuthProvider` around
+the app. This makes route navigation and the existing authentication
+context available to the landing page and protected pages without
+creating duplicate providers.
+
+## Shared layout responsibilities
+
+- `src/Components/Layout/AdminLayout.jsx` places the sidebar beside the
+  content column. Its `<Outlet />` is the insertion point where React
+  Router renders the matched nested page. Without the outlet, the layout
+  could appear while the dashboard content has nowhere to render.
+- `src/Components/Layout/Sidebar.jsx` renders the GBMS navigation. On
+  wide screens it stays at the left edge; on small screens it slides in
+  when opened and can be closed with its close button, backdrop, or a
+  navigation link.
+- `src/Components/Layout/Topbar.jsx` contains the responsive menu button,
+  a visual-only search field, a notification placeholder, and the
+  authenticated user's name, initials, and role. The profile menu closes
+  when the user clicks outside it or presses Escape.
+- `src/pages/Dashboard/Dashboard.jsx` contains dashboard content only.
+  It keeps the welcome message, user and role, protected dashboard API
+  request, loading and error feedback, and account access cards. It does
+  not add invented business metrics or repeat the topbar.
+
+The topbar's Sign out action calls the existing `logout()` method. That
+method clears the JWT from `sessionStorage` and clears the auth context;
+the topbar then navigates to `/`. The dashboard does not keep a second
+logout control or token store.
+
+## Styling and responsive behavior
+
+Tailwind flex classes keep the sidebar and content in two columns on
+desktop. `min-w-0` lets the content column shrink instead of forcing
+horizontal overflow, while `overflow-x-hidden` contains accidental
+sideways overflow. The sidebar switches to a fixed slide-in panel on
+mobile, controlled by a small state value in `AdminLayout`. Responsive
+padding classes give dashboard content more room on wider screens.
+Colors use the existing white, light-gray, and light-blue GBMS palette.
+
+## Root pnpm store ignore rule
+
+The repository root `.gitignore` excludes `.pnpm-store/` and nested
+folders with the same name. pnpm's local store is a package cache, not
+application source, so it should not be part of the project history.
+Ignoring tells Git not to add untracked cache files; it does not remove
+files that are already tracked. Tracked root-store entries were removed
+from Git's index with a cached removal, which keeps the local store on
+disk.
+
+## Validation performed for this layout change
+
+- `npm run lint` completed successfully.
+- `npm run build` completed successfully.
+- The route tree, component imports, and outlet nesting were inspected.
+- The landing page and login popover remain in `src/App.jsx`.
+- The mobile toggle is connected from the topbar through
+  `AdminLayout` to the sidebar, and the profile menu calls the existing
+  logout logic. These behaviors were checked in code; a browser-driven
+  visual interaction test was not performed.
+- Live JWT/SQL authentication was not re-tested as part of this layout
+  change. The dashboard API still uses the existing protected API
+  service.
