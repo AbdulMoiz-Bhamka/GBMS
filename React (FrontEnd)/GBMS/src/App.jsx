@@ -10,6 +10,7 @@ import { useAuth } from './auth/useAuth'
 import ProtectedRoute from './auth/ProtectedRoute'
 import DashboardPage from './pages/Dashboard/Dashboard'
 import './App.css'
+import AdminLayout from './Components/Layout/AdminLayout'
 
 const links = [
   ['Overview', '#home'],
