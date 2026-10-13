@@ -129,6 +129,20 @@ something we can refactor into the planned layered architecture later.
 
 # 3. The most important mental model
 
+## Company access and company administrators
+
+Creating a company creates its workspace record; it does not automatically create a login. A platform `SUPER_ADMIN` opens **Company management → Accounts** for the company, then creates the first user with the `COMPANY_ADMIN` role. The admin username and password are the values entered in that form. The password is stored as an Argon2 hash and is never returned by the API.
+
+The company administrator signs in on the regular GBMS login screen with that username and password. After login, the company user's account is linked to the company's database ID, and inventory requests are limited to that company. A company account cannot access platform company management. A Super Admin can use the same Accounts panel to create `SUB_ADMIN` or `INVENTORY_USER` accounts as needed.
+
+New company users can only be created for an active company. Use a unique username/email and a password of at least 12 characters. Share the initial password with the user securely; password reset/change is not yet implemented.
+
+### Calling protected APIs in FastAPI docs
+
+The API expects a JWT in `Authorization: Bearer <token>` for protected routes. In `/docs`, first call `POST /api/v1/auth/login` with the JSON username/password and copy the `access_token` from the response. Select **Authorize**, paste the token value (without adding the word `Bearer`), and confirm. FastAPI adds the Bearer prefix to requests. Without this step, protected endpoints correctly return HTTP 401. The Swagger security scheme is HTTP Bearer because the login endpoint accepts JSON rather than OAuth2 form fields.
+
+In local development, Vite proxies `/api` and `/health` requests to FastAPI at `http://127.0.0.1:8000`; this avoids browser CORS issues when the frontend is opened at either `http://localhost:5173` or `http://127.0.0.1:5173`. Start FastAPI on that address (`python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000`) and restart Vite after changing its config or `.env.local`. `/health` checks API availability without requiring a token.
+
 Before reading individual lines, remember this:
 
 ### React does NOT authenticate the user.
@@ -5481,3 +5495,216 @@ disk.
 - Live JWT/SQL authentication was not re-tested as part of this layout
   change. The dashboard API still uses the existing protected API
   service.
+
+------------------------------------------------------------------------
+
+# Multi-company and inventory foundation
+
+This section documents the company and product-catalogue work added to
+GBMS. It builds on the current FastAPI, pyodbc, SQL Server, JWT, and
+Argon2 setup. It does not add stock balances or the other ERP workflows.
+
+## Platform users and company users
+
+`SUPER_ADMIN` is a platform role. A Super Admin account has no
+`CompanyID` and can use the company-management endpoints across the
+platform. The React sidebar shows Company Management only for this role,
+and FastAPI independently checks the role on every company-management
+request.
+
+`COMPANY_ADMIN`, `SUB_ADMIN`, and `INVENTORY_USER` are company-scoped
+roles. Each user has one nullable `Users.CompanyID` foreign key; the
+database trigger requires that all non-Super-Admin users have a company
+and that Super Admin users have none. The foreign key prevents assignment
+to a non-existent company. There is no user administration API yet, so
+provisioning company accounts still needs a secure account-creation flow
+that assigns the correct role and CompanyID and stores only an Argon2
+password hash.
+
+The JWT still identifies the user through its `sub` claim. It does not
+prove a role or tenant. On each authenticated backend request,
+`get_current_user()` reloads the user's status, current role, and company
+from SQL Server. It rejects suspended/inactive accounts, company users
+without a company, and users assigned to an inactive company. This means
+changing a browser URL, request body, query string, or local state cannot
+change the user's tenant.
+
+## Database relationships
+
+The migration is `SQL Server Query/Multi Company Inventory Migration.sql`.
+It is additive and repeatable: it does not drop, recreate, truncate, or
+reset the existing `Roles` or `Users` tables, user rows, IDs, or password
+hashes. It adds:
+
+- `Companies`: globally unique company name and stable company code,
+  contact details, ACTIVE/INACTIVE status, and UTC timestamps.
+- `Users.CompanyID`: nullable foreign key to `Companies`, plus an index.
+- Additional role rows for `COMPANY_ADMIN`, `SUB_ADMIN`, and
+  `INVENTORY_USER`, inserted only if missing. Existing `SUPER_ADMIN`
+  data remains in place.
+- `UnitsOfMeasure`: global reference data, shared by companies. The seed
+  units are Piece, Kilogram, Metre, Yard, Roll, and Box.
+- `ProductCategories`: each category belongs to one company; category
+  names are unique within that company.
+- `Products`: each product belongs to one company, has a company-unique
+  SKU, product type, global unit, optional same-company category,
+  non-negative decimal reorder level, active flag, and timestamps.
+
+The composite foreign key from `(Products.CompanyID, Products.CategoryID)`
+to the matching company/category key is a database-level guard against a
+product referencing another company's category. Product SKU uniqueness
+is `(CompanyID, SKU)`, so separate companies may use the same SKU.
+Company names and codes are unique platform-wide. Quantities use
+`DECIMAL(18,3)`; no on-hand quantity is stored because a stock ledger and
+stock movement rules are a separate phase.
+
+### Applying or checking the migration
+
+The migration was applied to the configured `GBMS` SQL Server database
+and immediately run a second time. Both executions completed. A read-only
+check confirmed the four company/inventory tables, all four expected
+roles, six global units, and the existing single Super Admin account.
+There are currently no companies, product categories, or products, so the
+new screens will show their empty states until records are added. To run
+the migration manually from SSMS, connect to the `GBMS` database, open the
+migration file, and execute it. With `sqlcmd` and Windows authentication,
+run this from the repository root:
+
+```powershell
+sqlcmd -S 'AbdulMoiz\sqlserver16' -d GBMS -E -b -i '.\SQL Server Query\Multi Company Inventory Migration.sql'
+```
+
+Confirm the objects and role seed with:
+
+```sql
+USE GBMS;
+SELECT name FROM sys.tables
+WHERE name IN ('Companies', 'ProductCategories', 'Products', 'UnitsOfMeasure');
+SELECT RoleName FROM dbo.Roles
+WHERE RoleName IN ('SUPER_ADMIN', 'COMPANY_ADMIN', 'SUB_ADMIN', 'INVENTORY_USER');
+SELECT u.CompanyID FROM dbo.Users AS u
+JOIN dbo.Roles AS r ON r.RoleID = u.RoleID
+WHERE r.RoleName = 'SUPER_ADMIN';
+```
+
+The last query should leave the platform Super Admin's `CompanyID` null.
+Do not assign that platform account to a tenant.
+
+## Backend API and isolation
+
+Company management is restricted by `require_super_admin`:
+
+- `GET /api/v1/companies?search=&limit=25&offset=0` lists companies.
+- `POST /api/v1/companies` creates a company.
+- `GET /api/v1/companies/{company_id}` reads its details.
+- `PUT /api/v1/companies/{company_id}` updates name, code, and contact
+  fields.
+- `PATCH /api/v1/companies/{company_id}/status` activates or deactivates
+  a company.
+
+Company inventory requires an active company-scoped user. The API
+derives the company from that user's current database record, never from
+a client-supplied CompanyID:
+
+- `GET /api/v1/inventory/categories` lists the signed-in company's
+  categories; `POST` creates one in that company.
+- `GET /api/v1/inventory/units` lists shared active units.
+- `GET /api/v1/inventory/products` lists only the user's company
+  products and accepts `search`, `category_id`, `limit`, and `offset`.
+- `POST /api/v1/inventory/products` creates a product in the user's
+  company.
+- `GET /api/v1/inventory/products/{product_id}` reads a product only
+  when it belongs to that company.
+- `PUT /api/v1/inventory/products/{product_id}` updates only that
+  company's product.
+- `PATCH /api/v1/inventory/products/{product_id}/status` activates or
+  deactivates only that company's product.
+
+Product/category SQL always binds the CompanyID from the authenticated
+user. Missing and other-tenant product IDs both return 404. The API uses
+parameterized values for all user input. Search SQL identifiers and
+update column names come from fixed server-side choices. Duplicate
+company names/codes, category names within one company, or SKUs within
+one company return a conflict response.
+
+## Frontend routes and pages
+
+The existing landing page and login popover stay public at `/`. The
+protected route tree keeps the shared `AdminLayout`, then adds:
+
+- `/companies`, allowed only for `SUPER_ADMIN`.
+- `/inventory`, allowed only for `COMPANY_ADMIN`, `SUB_ADMIN`, and
+  `INVENTORY_USER`.
+
+These React checks improve navigation, but they are not the security
+boundary; FastAPI repeats all role and tenant checks. The Company
+Management page reads real API results and supports create, edit, search,
+pagination, and confirmed status changes. Inventory reads company
+categories and global units from FastAPI, and supports product create,
+edit, search, category filtering, pagination, category creation, and
+confirmed active/inactive changes. Both pages provide loading, empty,
+success, validation/error states and do not substitute fake rows for
+database results. The existing Sidebar shows the appropriate live
+navigation for the role; not-yet-built modules are disabled and labelled
+Coming Soon.
+
+## Running and configuring the app
+
+Keep real secrets in `FastAPI (BackEnd)/.env`; the checked-in
+`.env.example` contains placeholders only. The existing `.env` sets the
+SQL Server instance and JWT secret. From the repository root, run the
+backend and frontend in separate terminals:
+
+```powershell
+Set-Location '.\FastAPI (BackEnd)'
+.\venv\Scripts\python.exe -m uvicorn main:app --reload
+```
+
+```powershell
+Set-Location '.\React (FrontEnd)\GBMS'
+npm run dev
+```
+
+The frontend uses `VITE_API_BASE_URL` if it is set; otherwise it uses
+`http://127.0.0.1:8000`. The UI does not contain database credentials.
+
+## Tenant-isolation check for a company account
+
+Once a company-scoped account is securely provisioned for Company A:
+
+1. Sign in as that account and create a product. Confirm it appears in
+   Company A's inventory.
+2. Try another company's product ID with the same bearer token. The API
+   should return 404 and should not reveal that other company's product.
+3. Try sending `company_id` in a product create/update body. The request
+   schema rejects extra fields; the backend uses only the company ID
+   reloaded from the signed-in account.
+4. Deactivate Company A. The next login and every later authenticated
+   company operation should be rejected, even if the user still has a
+   previously issued JWT.
+5. Sign in as Super Admin and confirm company routes work while inventory
+   routes remain denied unless a separate explicit platform feature is
+   designed later.
+
+The company-scoped account provisioning and full two-company end-to-end
+isolation test remain future work; there is currently no user-management
+UI or company-admin creation endpoint. The backend guards and schema are
+in place so this can be added without trusting a CompanyID from React.
+
+## Checks run for this implementation
+
+- The SQL migration completed successfully twice against `GBMS`; a
+  read-only check confirmed the four new tables and the existing Super
+  Admin account.
+- The FastAPI source compiled and imported, and OpenAPI registered the
+  company and product routes.
+- Frontend `npm run lint` and `npm run build` both completed successfully
+  after the final UI changes.
+- Seven focused database-free authorization/schema checks in
+  `FastAPI (BackEnd)/test_company_inventory.py` passed with
+  `python -m unittest -v test_company_inventory.py`.
+- A read-only SQL Server query confirmed four seeded roles, six active
+  units, and one Super Admin with no company assignment.
+- The full company CRUD, company-user login, and cross-tenant product
+  behavior have not been exercised end-to-end with separate company
+  accounts.

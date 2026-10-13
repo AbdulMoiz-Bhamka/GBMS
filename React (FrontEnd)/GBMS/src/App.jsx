@@ -11,6 +11,9 @@ import ProtectedRoute from './auth/ProtectedRoute'
 import DashboardPage from './pages/Dashboard/Dashboard'
 import './App.css'
 import AdminLayout from './Components/Layout/AdminLayout'
+import RoleRoute from './auth/RoleRoute'
+import CompaniesPage from './pages/Companies/CompaniesPage'
+import InventoryPage from './pages/Inventory/InventoryPage'
 
 const links = [
   ['Overview', '#home'],
@@ -210,6 +213,12 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AdminLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route element={<RoleRoute allowedRoles={['SUPER_ADMIN']} />}>
+            <Route path="/companies" element={<CompaniesPage />} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={['COMPANY_ADMIN', 'SUB_ADMIN', 'INVENTORY_USER']} />}>
+            <Route path="/inventory" element={<InventoryPage />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

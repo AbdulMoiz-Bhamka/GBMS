@@ -1,3 +1,4 @@
+# requirements.txt
 fastapi==0.142.2
 uvicorn==0.54.0
 pyodbc==5.3.0
