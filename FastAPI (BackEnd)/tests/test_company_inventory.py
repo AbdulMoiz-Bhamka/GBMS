@@ -7,18 +7,16 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-import main
-from main import (
-    CompanyCreate,
-    CompanyUserCreate,
-    allowed_origins,
-    ProductCreate,
-    create_company_user,
-    ensure_category_for_company,
-    require_company_user,
-    require_super_admin,
-    validate_role_company,
-)
+import pyodbc
+from app.core.config import ALLOWED_ORIGINS
+from app.dependencies.permissions import require_company_user, require_super_admin
+from app.modules.companies.schemas import CompanyCreate
+from app.modules.inventory.repository import category_available
+from app.modules.inventory.service import _ensure_category
+from app.modules.inventory.schemas import ProductCreate
+from app.modules.users.schemas import CompanyUserCreate
+from app.modules.users.service import create_company_user, validate_role_company
+from app.main import app
 
 
 class FakeCategoryCursor:
@@ -93,9 +91,24 @@ class FakeUserConnection:
 
 
 class CompanyInventoryValidationTests(unittest.TestCase):
+    def test_modular_app_registers_existing_api_paths(self):
+        paths = set(app.openapi()["paths"])
+        self.assertTrue(
+            {
+                "/health",
+                "/api/v1/auth/login",
+                "/api/v1/auth/me",
+                "/api/v1/dashboard",
+                "/api/v1/companies",
+                "/api/v1/companies/{company_id}/users",
+                "/api/v1/inventory/categories",
+                "/api/v1/inventory/products",
+            }.issubset(paths)
+        )
+
     def test_local_frontend_origins_are_always_allowed(self):
-        self.assertIn("http://localhost:5173", allowed_origins)
-        self.assertIn("http://127.0.0.1:5173", allowed_origins)
+        self.assertIn("http://localhost:5173", ALLOWED_ORIGINS)
+        self.assertIn("http://127.0.0.1:5173", ALLOWED_ORIGINS)
 
     def test_super_admin_must_have_no_company(self):
         validate_role_company("SUPER_ADMIN", None, None)
@@ -122,13 +135,13 @@ class CompanyInventoryValidationTests(unittest.TestCase):
 
     def test_category_lookup_is_scoped_to_company(self):
         cursor = FakeCategoryCursor(found=True)
-        ensure_category_for_company(cursor, 4, 12)
+        category_available(cursor, 4, 12)
         self.assertIn("CategoryID = ? AND CompanyID = ?", cursor.sql)
         self.assertEqual(cursor.params, (4, 12))
 
     def test_missing_cross_company_category_is_rejected(self):
         with self.assertRaises(HTTPException) as error:
-            ensure_category_for_company(FakeCategoryCursor(found=False), 4, 12)
+            _ensure_category(FakeCategoryCursor(found=False), 4, 12)
         self.assertEqual(error.exception.status_code, 422)
 
     def test_company_code_is_normalized(self):
@@ -168,9 +181,9 @@ class CompanyInventoryValidationTests(unittest.TestCase):
 
     def call_create_company_user(self, cursor, company_id=1):
         connection = FakeUserConnection(cursor)
-        with patch("main.get_connection", return_value=connection):
+        with patch("app.db.connection.get_connection", return_value=connection):
             response = create_company_user(
-                self.company_user_payload(), company_id, {"role_name": "SUPER_ADMIN"}
+                company_id, self.company_user_payload()
             )
         return response, connection
 
@@ -194,15 +207,15 @@ class CompanyInventoryValidationTests(unittest.TestCase):
             ("UQ_Users_Email", "email"),
         ):
             cursor = FakeUserCursor(
-                insert_error=main.pyodbc.IntegrityError(
+                insert_error=pyodbc.IntegrityError(
                     f"2627 duplicate key in {constraint}"
                 )
             )
             connection = FakeUserConnection(cursor)
-            with patch("main.get_connection", return_value=connection):
+            with patch("app.db.connection.get_connection", return_value=connection):
                 with self.assertRaises(HTTPException) as error:
                     create_company_user(
-                        self.company_user_payload(), 1, {"role_name": "SUPER_ADMIN"}
+                        1, self.company_user_payload()
                     )
             self.assertEqual(error.exception.status_code, 409)
             self.assertIn(expected, error.exception.detail)
@@ -216,10 +229,10 @@ class CompanyInventoryValidationTests(unittest.TestCase):
             (FakeUserCursor(role_id=None), 500),
         ):
             connection = FakeUserConnection(cursor)
-            with patch("main.get_connection", return_value=connection):
+            with patch("app.db.connection.get_connection", return_value=connection):
                 with self.assertRaises(HTTPException) as error:
                     create_company_user(
-                        self.company_user_payload(), 1, {"role_name": "SUPER_ADMIN"}
+                        1, self.company_user_payload()
                     )
             self.assertEqual(error.exception.status_code, expected_status)
             self.assertTrue(connection.rolled_back)
@@ -227,13 +240,13 @@ class CompanyInventoryValidationTests(unittest.TestCase):
 
     def test_insert_trigger_or_database_failure_is_safe_and_rolled_back(self):
         cursor = FakeUserCursor(
-            insert_error=main.pyodbc.DatabaseError("SQL Server trigger failure 51001")
+            insert_error=pyodbc.DatabaseError("SQL Server trigger failure 51001")
         )
         connection = FakeUserConnection(cursor)
-        with patch("main.get_connection", return_value=connection):
+        with patch("app.db.connection.get_connection", return_value=connection):
             with self.assertRaises(HTTPException) as error:
                 create_company_user(
-                    self.company_user_payload(), 1, {"role_name": "SUPER_ADMIN"}
+                    1, self.company_user_payload()
                 )
         self.assertEqual(error.exception.status_code, 500)
         self.assertNotIn("51001", error.exception.detail)

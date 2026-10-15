@@ -1,10 +1,9 @@
 # seed_admin.py
 from getpass import getpass
 
-import pyodbc
-from argon2 import PasswordHasher
+from app.core.security import password_hasher
+from app.db.connection import database_connection, database_cursor
 
-from main import DB_NAME, DB_SERVER, DB_DRIVER, DB_USER, DB_PASSWORD
 
 
 def main():
@@ -16,17 +15,8 @@ def main():
         raise SystemExit(
             "Enter all fields and use a password of at least 12 characters."
         )
-    auth = (
-        f"UID={DB_USER};PWD={DB_PASSWORD};"
-        if DB_USER and DB_PASSWORD
-        else "Trusted_Connection=yes;"
-    )
-    connection = pyodbc.connect(
-        f"DRIVER={{{DB_DRIVER}}};SERVER={DB_SERVER};DATABASE={DB_NAME};{auth}TrustServerCertificate=yes;"
-    )
-    hashed = PasswordHasher().hash(password)
-    with connection:
-        cursor = connection.cursor()
+    hashed = password_hasher.hash(password)
+    with database_connection() as connection, database_cursor(connection) as cursor:
         cursor.execute("SELECT RoleID FROM dbo.Roles WHERE RoleName='SUPER_ADMIN'")
         role = cursor.fetchone()
         if not role:
@@ -45,6 +35,7 @@ def main():
         if cursor.rowcount == 0:
             print("That username already exists; no changes were made.")
         else:
+            connection.commit()
             print("Super administrator created.")
 
 

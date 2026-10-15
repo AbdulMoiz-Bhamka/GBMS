@@ -1,0 +1,1 @@
+"""Company-scoped inventory feature."""
