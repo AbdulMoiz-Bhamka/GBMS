@@ -105,7 +105,7 @@ def update_product(company_id, product_id, payload: ProductUpdate):
     values = payload.model_dump(exclude_unset=True)
     if not values:
         raise HTTPException(status_code=400, detail="Provide at least one product field to update.")
-    non_nullable = {"sku", "product_name", "product_type", "unit_id", "reorder_level"}
+    non_nullable = {"sku", "product_name", "product_type", "unit_id", "quantity_on_hand", "reorder_level"}
     if any(values.get(key) is None for key in non_nullable if key in values):
         raise HTTPException(status_code=422, detail="Required product fields cannot be empty.")
     with database_connection() as connection, database_cursor(connection) as cursor:

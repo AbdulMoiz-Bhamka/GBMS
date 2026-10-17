@@ -5,14 +5,14 @@ import { inventoryService } from '../../services/inventoryService'
 import { useAuth } from '../../auth/useAuth'
 
 const emptyProduct = {
-  sku: '', product_name: '', product_type: 'RAW_MATERIAL', category_id: '',
+  sku: '', product_name: '', product_type: 'RAW_MATERIAL', category_id: '', quantity_on_hand: '0',
   unit_id: '', description: '', reorder_level: '0',
 }
 
 export default function InventoryPage() {
   const { user } = useAuth()
-  const canCreate = user?.role_name === 'COMPANY_ADMIN' || user?.permissions?.includes('inventory.create')
-  const canUpdate = user?.role_name === 'COMPANY_ADMIN' || user?.permissions?.includes('inventory.update')
+  const canCreate = user?.permissions?.includes('inventory.create')
+  const canUpdate = user?.permissions?.includes('inventory.update')
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [units, setUnits] = useState([])
@@ -102,6 +102,7 @@ export default function InventoryPage() {
         category_id: product.category_id ? String(product.category_id) : '',
         unit_id: String(product.unit_id),
         description: product.description || '',
+        quantity_on_hand: String(product.quantity_on_hand ?? 0),
         reorder_level: String(product.reorder_level ?? 0),
       })
       setFormOpen(true)
@@ -122,6 +123,7 @@ export default function InventoryPage() {
       category_id: form.category_id ? Number(form.category_id) : null,
       unit_id: Number(form.unit_id),
       description: form.description.trim() || null,
+      quantity_on_hand: form.quantity_on_hand,
       reorder_level: form.reorder_level,
     }
     try {
@@ -212,6 +214,7 @@ export default function InventoryPage() {
             <label className="text-sm font-medium text-slate-700">Product type *<select required value={form.product_type} onChange={(event) => setForm({ ...form, product_type: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal outline-none focus:border-sky-500"><option value="RAW_MATERIAL">Raw material</option><option value="FINISHED_GOOD">Finished good</option></select></label>
             <label className="text-sm font-medium text-slate-700">Unit of measure *<select required value={form.unit_id} onChange={(event) => setForm({ ...form, unit_id: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal outline-none focus:border-sky-500"><option value="">Select a unit</option>{units.map((unit) => <option key={unit.unit_id} value={unit.unit_id}>{unit.unit_name} ({unit.symbol || unit.unit_code})</option>)}</select></label>
             <div><label htmlFor="product-category" className="text-sm font-medium text-slate-700">Category</label><select id="product-category" value={form.category_id} onChange={(event) => setForm({ ...form, category_id: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"><option value="">No category</option>{categories.map((category) => <option key={category.category_id} value={category.category_id}>{category.category_name}</option>)}</select>{canCreate && <button type="button" onClick={() => setCategoryFormOpen((open) => !open)} className="mt-1 text-xs font-semibold text-sky-700 hover:text-sky-900">{categoryFormOpen ? 'Cancel new category' : '+ Create a category'}</button>}</div>
+            <label className="text-sm font-medium text-slate-700">Quantity on hand<input required type="number" min="0" step="0.001" value={form.quantity_on_hand} onChange={(event) => setForm({ ...form, quantity_on_hand: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /><span className="mt-1 block text-xs font-normal text-slate-500">Current stock for this product. It updates the dashboard chart.</span></label>
             <label className="text-sm font-medium text-slate-700">Reorder level *<input required type="number" min="0" step="0.001" value={form.reorder_level} onChange={(event) => setForm({ ...form, reorder_level: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /></label>
             <label className="text-sm font-medium text-slate-700 sm:col-span-2 lg:col-span-3">Description<textarea rows={2} maxLength={1000} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /></label>
           </div>
@@ -231,14 +234,14 @@ export default function InventoryPage() {
           <div className="flex flex-col gap-2 sm:flex-row"><form onSubmit={submitSearch} className="flex gap-2"><label htmlFor="product-search" className="sr-only">Search products</label><input id="product-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search SKU or name" className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500" /><button className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50">Search</button></form><label htmlFor="category-filter" className="sr-only">Filter by category</label><select id="category-filter" value={categoryId} onChange={(event) => { setOffset(0); setCategoryId(event.target.value) }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">All categories</option>{categories.map((category) => <option key={category.category_id} value={category.category_id}>{category.category_name}</option>)}</select></div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-semibold">SKU</th><th className="px-5 py-3 font-semibold">Product</th><th className="px-5 py-3 font-semibold">Category</th><th className="px-5 py-3 font-semibold">Type</th><th className="px-5 py-3 font-semibold">Unit</th><th className="px-5 py-3 font-semibold">Reorder level</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 text-right font-semibold">Actions</th></tr></thead>
+          <table className="w-full min-w-[1040px] text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-semibold">SKU</th><th className="px-5 py-3 font-semibold">Product</th><th className="px-5 py-3 font-semibold">Category</th><th className="px-5 py-3 font-semibold">Type</th><th className="px-5 py-3 font-semibold">Unit</th><th className="px-5 py-3 font-semibold">On hand</th><th className="px-5 py-3 font-semibold">Reorder level</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 text-right font-semibold">Actions</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {products.map((product) => <tr key={product.product_id}>
-                <td className="px-5 py-4 font-mono text-xs text-slate-600">{product.sku}</td><td className="px-5 py-4 font-semibold text-slate-800">{product.product_name}</td><td className="px-5 py-4 text-slate-600">{product.category_name || '—'}</td><td className="px-5 py-4 text-slate-600">{product.product_type === 'RAW_MATERIAL' ? 'Raw material' : 'Finished good'}</td><td className="px-5 py-4 text-slate-600">{product.unit_name} ({product.unit_code})</td><td className="px-5 py-4 text-slate-600">{product.reorder_level}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${product.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{product.is_active ? 'ACTIVE' : 'INACTIVE'}</span></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{canUpdate && <><button type="button" onClick={() => openEdit(product.product_id)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Pencil size={14} /> Edit</button><button type="button" onClick={() => toggleStatus(product)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Power size={14} />{product.is_active ? 'Deactivate' : 'Activate'}</button></>}</div></td>
+                <td className="px-5 py-4 font-mono text-xs text-slate-600">{product.sku}</td><td className="px-5 py-4 font-semibold text-slate-800">{product.product_name}</td><td className="px-5 py-4 text-slate-600">{product.category_name || '—'}</td><td className="px-5 py-4 text-slate-600">{product.product_type === 'RAW_MATERIAL' ? 'Raw material' : 'Finished good'}</td><td className="px-5 py-4 text-slate-600">{product.unit_name} ({product.unit_code})</td><td className="px-5 py-4 font-medium text-slate-700">{product.quantity_on_hand} {product.unit_code}</td><td className="px-5 py-4 text-slate-600">{product.reorder_level}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${product.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{product.is_active ? 'ACTIVE' : 'INACTIVE'}</span></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{canUpdate && <><button type="button" onClick={() => openEdit(product.product_id)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Pencil size={14} /> Edit</button><button type="button" onClick={() => toggleStatus(product)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Power size={14} />{product.is_active ? 'Deactivate' : 'Activate'}</button></>}</div></td>
               </tr>)}
-              {!loading && products.length === 0 && <tr><td colSpan={8} className="px-5 py-14 text-center"><Package className="mx-auto text-slate-300" size={28} /><p className="mt-3 font-medium text-slate-700">No products yet</p><p className="mt-1 text-sm text-slate-500">Add a product to start this company’s catalogue.</p></td></tr>}
-              {loading && <tr><td colSpan={8} className="px-5 py-12 text-center text-sm text-slate-500" role="status">Loading products…</td></tr>}
+              {!loading && products.length === 0 && <tr><td colSpan={9} className="px-5 py-14 text-center"><Package className="mx-auto text-slate-300" size={28} /><p className="mt-3 font-medium text-slate-700">No products yet</p><p className="mt-1 text-sm text-slate-500">Add a product to start this company’s catalogue.</p></td></tr>}
+              {loading && <tr><td colSpan={9} className="px-5 py-12 text-center text-sm text-slate-500" role="status">Loading products…</td></tr>}
             </tbody>
           </table>
         </div>

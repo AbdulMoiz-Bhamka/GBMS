@@ -153,7 +153,7 @@ def get_assignable_options(actor):
         "roles": list(COMPANY_USER_ROLES),
         "permissions": [
             {"code": code, "label": label} for code, label in PERMISSION_LABELS.items()
-            if code != "dashboard.view"
+            if code not in {"dashboard.view", "dashboard.company_overview"}
         ],
     }
 

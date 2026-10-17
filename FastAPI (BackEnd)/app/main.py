@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import ALLOWED_ORIGINS
 from app.modules.auth.router import router as auth_router
 from app.modules.companies.router import router as companies_router
+from app.modules.dashboard.router import router as dashboard_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.users.router import router as users_router
 
@@ -26,5 +27,6 @@ def health():
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(companies_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")

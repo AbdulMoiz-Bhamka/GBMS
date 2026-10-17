@@ -2,7 +2,8 @@
 
 PRODUCT_SELECT = """SELECT p.ProductID, p.SKU, p.ProductName, p.ProductType,
     p.CategoryID, c.CategoryName, p.UnitID, u.UnitCode, u.UnitName,
-    p.Description, p.ReorderLevel, p.IsActive, p.CreatedAt, p.UpdatedAt
+    p.Description, p.ReorderLevel, p.IsActive, p.CreatedAt, p.UpdatedAt,
+    p.QuantityOnHand
     FROM dbo.Products AS p
     LEFT JOIN dbo.ProductCategories AS c
       ON c.CategoryID = p.CategoryID AND c.CompanyID = p.CompanyID
@@ -25,6 +26,7 @@ def serialize_product(row):
         "is_active": bool(row[11]),
         "created_at": row[12],
         "updated_at": row[13],
+        "quantity_on_hand": row[14],
     }
 
 
@@ -104,9 +106,9 @@ def insert_product(cursor, company_id, payload):
     return cursor.execute(
         """INSERT INTO dbo.Products
            (CompanyID, CategoryID, SKU, ProductName, ProductType, UnitID,
-            Description, ReorderLevel)
+            Description, ReorderLevel, QuantityOnHand)
            OUTPUT INSERTED.ProductID
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         company_id,
         payload.category_id,
         payload.sku,
@@ -115,6 +117,7 @@ def insert_product(cursor, company_id, payload):
         payload.unit_id,
         payload.description,
         payload.reorder_level,
+        payload.quantity_on_hand,
     ).fetchone()[0]
 
 
@@ -126,6 +129,7 @@ def update_product(cursor, company_id, product_id, values):
         "unit_id": "UnitID",
         "category_id": "CategoryID",
         "description": "Description",
+        "quantity_on_hand": "QuantityOnHand",
         "reorder_level": "ReorderLevel",
     }
     assignments = [f"{columns[name]} = ?" for name in values]

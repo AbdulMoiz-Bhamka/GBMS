@@ -2,6 +2,7 @@
 
 PERMISSION_LABELS = {
     "dashboard.view": "View dashboard",
+    "dashboard.company_overview": "View company overview metrics",
     "users.view": "View company users",
     "users.create": "Create company users",
     "users.update": "Edit company users",
@@ -19,6 +20,7 @@ COMPANY_USER_ROLES = ("SUB_ADMIN", "INVENTORY_USER", WORKER_ROLE)
 COMPANY_ADMIN_PERMISSIONS = frozenset(
     {
         "dashboard.view",
+        "dashboard.company_overview",
         "users.view",
         "users.create",
         "users.update",
@@ -42,6 +44,8 @@ def effective_permissions(role_name, configured, assigned=()):
         return ["dashboard.view"]
     if role_name == "COMPANY_ADMIN" and not configured:
         return sorted(COMPANY_ADMIN_PERMISSIONS)
+    if role_name == "COMPANY_ADMIN":
+        return sorted({"dashboard.view", "dashboard.company_overview", *assigned})
     if not configured and role_name in COMPANY_USER_ROLES:
         return sorted(LEGACY_INVENTORY_PERMISSIONS)
     return sorted({"dashboard.view", *assigned})

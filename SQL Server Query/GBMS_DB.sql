@@ -264,6 +264,8 @@ BEGIN
         ProductType NVARCHAR(24) NOT NULL,
         UnitID INT NOT NULL,
         Description NVARCHAR(1000) NULL,
+        QuantityOnHand DECIMAL(18,3) NOT NULL
+            CONSTRAINT DF_Products_QuantityOnHand DEFAULT (0),
         ReorderLevel DECIMAL(18,3) NOT NULL
             CONSTRAINT DF_Products_ReorderLevel DEFAULT (0),
         IsActive BIT NOT NULL CONSTRAINT DF_Products_IsActive DEFAULT (1),
@@ -283,6 +285,13 @@ BEGIN
         CONSTRAINT CK_Products_SKU_NotBlank CHECK (LEN(LTRIM(RTRIM(SKU))) > 0),
         CONSTRAINT CK_Products_ProductName_NotBlank CHECK (LEN(LTRIM(RTRIM(ProductName))) > 0)
     );
+END;
+GO
+
+IF COL_LENGTH(N'dbo.Products', N'QuantityOnHand') IS NULL
+BEGIN
+    ALTER TABLE dbo.Products ADD QuantityOnHand DECIMAL(18,3) NOT NULL
+        CONSTRAINT DF_Products_QuantityOnHand DEFAULT (0) WITH VALUES;
 END;
 GO
 
@@ -355,6 +364,7 @@ INSERT INTO dbo.PermissionCatalog (PermissionCode, PermissionName)
 SELECT seed.PermissionCode, seed.PermissionName
 FROM (VALUES
     (N'dashboard.view', N'View dashboard'),
+    (N'dashboard.company_overview', N'View company overview metrics'),
     (N'users.view', N'View company users'),
     (N'users.create', N'Create company users'),
     (N'users.update', N'Edit company users'),
