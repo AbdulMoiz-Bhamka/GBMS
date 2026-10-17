@@ -10,12 +10,19 @@ from pydantic import ValidationError
 import pyodbc
 from app.core.config import ALLOWED_ORIGINS
 from app.dependencies.permissions import require_company_user, require_super_admin
+from app.dependencies.permissions import has_permission
+from app.core.permissions import effective_permissions
 from app.modules.companies.schemas import CompanyCreate
 from app.modules.inventory.repository import category_available
 from app.modules.inventory.service import _ensure_category
 from app.modules.inventory.schemas import ProductCreate
-from app.modules.users.schemas import CompanyUserCreate
-from app.modules.users.service import create_company_user, validate_role_company
+from app.modules.users.schemas import CompanyUserCreate, CompanyUserUpdate
+from app.modules.users.service import (
+    _company_for_actor,
+    _require,
+    create_company_user,
+    validate_role_company,
+)
 from app.main import app
 
 
@@ -40,16 +47,17 @@ class FakeUserCursor:
         self.role_id = role_id
         self.insert_error = insert_error
         self.result = None
+        self.permission_rows = []
         self.insert_sql = None
         self.insert_params = None
 
     def execute(self, sql, *params):
-        normalized = " ".join(sql.split())
-        if "SELECT CompanyStatus FROM dbo.Companies" in normalized:
+        normalized = " ".join(sql.split()).upper()
+        if "SELECT COMPANYSTATUS FROM DBO.COMPANIES" in normalized:
             self.result = (self.company_status,) if self.company_status else None
-        elif "SELECT RoleID FROM dbo.Roles" in normalized:
+        elif "SELECT ROLEID FROM DBO.ROLES" in normalized:
             self.result = (self.role_id,) if self.role_id else None
-        elif "INSERT INTO dbo.Users" in normalized:
+        elif "INSERT INTO DBO.USERS" in normalized:
             self.insert_sql = normalized
             self.insert_params = params
             if self.insert_error:
@@ -57,14 +65,25 @@ class FakeUserCursor:
             if "SCOPE_IDENTITY()" not in normalized:
                 raise AssertionError("SCOPE_IDENTITY must run in the INSERT batch.")
             self.result = (77,)
-        elif "FROM dbo.Users WHERE UserID = ?" in normalized:
-            self.result = (77, "aman365", "Aman", "aman@example.com", "ACTIVE", "2026-10-13")
+        elif "FROM DBO.USERS AS U JOIN DBO.ROLES AS R" in normalized and "WHERE U.COMPANYID = ? AND U.USERID = ?" in normalized:
+            self.result = (77, "aman365", "Aman", "aman@example.com", "INVENTORY_USER", "ACTIVE", 1, "2026-10-13", 1)
+        elif "FROM DBO.USERPERMISSIONS" in normalized:
+            self.rows = list(self.permission_rows)
+            self.result = None
+        elif "DELETE FROM DBO.USERPERMISSIONS" in normalized:
+            self.result = None
+        elif "INSERT INTO DBO.USERPERMISSIONS" in normalized:
+            self.permission_rows.append((params[1],))
+            self.result = None
         else:
             raise AssertionError(f"Unexpected SQL in fake cursor: {normalized}")
         return self
 
     def fetchone(self):
         return self.result
+
+    def fetchall(self):
+        return getattr(self, "rows", [])
 
     def close(self):
         pass
@@ -101,6 +120,9 @@ class CompanyInventoryValidationTests(unittest.TestCase):
                 "/api/v1/dashboard",
                 "/api/v1/companies",
                 "/api/v1/companies/{company_id}/users",
+                "/api/v1/companies/{company_id}/users/{user_id}",
+                "/api/v1/companies/{company_id}/users/{user_id}/status",
+                "/api/v1/users/assignable-options",
                 "/api/v1/inventory/categories",
                 "/api/v1/inventory/products",
             }.issubset(paths)
@@ -124,6 +146,65 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as inactive:
             validate_role_company("COMPANY_ADMIN", 10, "INACTIVE")
         self.assertEqual(inactive.exception.status_code, 403)
+
+    def test_user_permissions_are_individual_and_role_scoped(self):
+        selected = effective_permissions("INVENTORY_USER", True, ["inventory.view"])
+        self.assertIn("dashboard.view", selected)
+        self.assertIn("inventory.view", selected)
+        self.assertNotIn("inventory.update", selected)
+        self.assertTrue(has_permission({"role_name": "INVENTORY_USER", "permissions": selected}, "inventory.view"))
+        self.assertFalse(has_permission({"role_name": "INVENTORY_USER", "permissions": selected}, "users.create"))
+        self.assertTrue(has_permission({"role_name": "COMPANY_ADMIN", "permissions": []}, "users.create"))
+        self.assertEqual(effective_permissions("UNLISTED_ROLE", False), ["dashboard.view"])
+
+    def test_company_user_operations_reject_a_different_tenant(self):
+        actor = {"user_id": 20, "role_name": "COMPANY_ADMIN", "company_id": 8}
+        with self.assertRaises(HTTPException) as error:
+            _company_for_actor(actor, 9)
+        self.assertEqual(error.exception.status_code, 404)
+
+    def test_company_admin_cannot_create_another_company_admin(self):
+        actor = {
+            "user_id": 20,
+            "role_name": "COMPANY_ADMIN",
+            "company_id": 8,
+            "permissions": effective_permissions("COMPANY_ADMIN", True),
+        }
+        payload = CompanyUserCreate(
+            username="another_admin",
+            full_name="Another Admin",
+            email="another@example.com",
+            password="a-secure-test-password",
+            role_name="COMPANY_ADMIN",
+        )
+        with self.assertRaises(HTTPException) as error:
+            create_company_user(actor, 8, payload)
+        self.assertEqual(error.exception.status_code, 403)
+
+    def test_user_cannot_grant_permissions_they_do_not_have(self):
+        actor = {
+            "user_id": 20,
+            "role_name": "SUB_ADMIN",
+            "company_id": 8,
+            "permissions": ["dashboard.view", "users.create", "users.assign_role"],
+        }
+        payload = CompanyUserCreate(
+            username="limited_user",
+            full_name="Limited User",
+            email="limited@example.com",
+            password="a-secure-test-password",
+            role_name="INVENTORY_USER",
+            permission_codes=["inventory.update"],
+        )
+        with self.assertRaises(HTTPException) as error:
+            create_company_user(actor, 8, payload)
+        self.assertEqual(error.exception.status_code, 403)
+
+    def test_permission_checks_reject_unassigned_actions(self):
+        user = {"role_name": "INVENTORY_USER", "permissions": ["dashboard.view", "inventory.view"]}
+        with self.assertRaises(HTTPException) as error:
+            _require(user, "inventory.create")
+        self.assertEqual(error.exception.status_code, 403)
 
     def test_inventory_access_is_not_granted_to_platform_or_unlisted_roles(self):
         with self.assertRaises(HTTPException) as platform_user:
@@ -161,6 +242,8 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CompanyUserCreate(**{**valid, "role_name": "SUPER_ADMIN"})
         with self.assertRaises(ValidationError):
+            CompanyUserUpdate(role_name="SUPER_ADMIN")
+        with self.assertRaises(ValidationError):
             CompanyUserCreate(**{**valid, "company_id": 99})
         self.assertEqual(CompanyUserCreate(**valid).username, "moiz_admin")
         with self.assertRaises(ValidationError):
@@ -177,13 +260,17 @@ class CompanyInventoryValidationTests(unittest.TestCase):
             full_name="Aman",
             email="aman@example.com",
             password="a-secure-test-password",
+            role_name="INVENTORY_USER",
+            permission_codes=["inventory.view", "inventory.create"],
         )
 
     def call_create_company_user(self, cursor, company_id=1):
         connection = FakeUserConnection(cursor)
         with patch("app.db.connection.get_connection", return_value=connection):
             response = create_company_user(
-                company_id, self.company_user_payload()
+                {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None},
+                company_id,
+                self.company_user_payload(),
             )
         return response, connection
 
@@ -191,6 +278,7 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         cursor = FakeUserCursor()
         response, connection = self.call_create_company_user(cursor)
         self.assertEqual(response["user_id"], 77)
+        self.assertEqual(response["permission_codes"], ["dashboard.view", "inventory.create", "inventory.view"])
         self.assertNotIn("password", response)
         self.assertNotIn("PasswordHash", response)
         self.assertNotIn("OUTPUT", cursor.insert_sql.upper())
@@ -215,7 +303,8 @@ class CompanyInventoryValidationTests(unittest.TestCase):
             with patch("app.db.connection.get_connection", return_value=connection):
                 with self.assertRaises(HTTPException) as error:
                     create_company_user(
-                        1, self.company_user_payload()
+                        {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None}, 1,
+                        self.company_user_payload(),
                     )
             self.assertEqual(error.exception.status_code, 409)
             self.assertIn(expected, error.exception.detail)
@@ -232,7 +321,8 @@ class CompanyInventoryValidationTests(unittest.TestCase):
             with patch("app.db.connection.get_connection", return_value=connection):
                 with self.assertRaises(HTTPException) as error:
                     create_company_user(
-                        1, self.company_user_payload()
+                        {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None}, 1,
+                        self.company_user_payload(),
                     )
             self.assertEqual(error.exception.status_code, expected_status)
             self.assertTrue(connection.rolled_back)
@@ -246,7 +336,8 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         with patch("app.db.connection.get_connection", return_value=connection):
             with self.assertRaises(HTTPException) as error:
                 create_company_user(
-                    1, self.company_user_payload()
+                    {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None}, 1,
+                    self.company_user_payload(),
                 )
         self.assertEqual(error.exception.status_code, 500)
         self.assertNotIn("51001", error.exception.detail)

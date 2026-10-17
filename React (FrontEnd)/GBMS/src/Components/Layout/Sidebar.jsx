@@ -8,12 +8,16 @@ import { useAuth } from '../../auth/useAuth'
 export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const { user } = useAuth()
   const isSuperAdmin = user?.role_name === 'SUPER_ADMIN'
-  const isCompanyUser = ['COMPANY_ADMIN', 'SUB_ADMIN', 'INVENTORY_USER'].includes(user?.role_name)
+  const isWorker = user?.role_name === 'WORKER'
+  const hasPermission = (code) => user?.company_id != null && user?.permissions?.includes(code)
   const navigationGroups = [
     { title: 'OVERVIEW', items: [{ label: 'Overview', path: '/dashboard', icon: BarChart3, available: true }] },
     ...(isSuperAdmin ? [{ title: 'PLATFORM', items: [{ label: 'Companies', path: '/companies', icon: Building2, available: true }] }] : []),
-    ...(isCompanyUser ? [{ title: 'BUSINESS', items: [{ label: 'Inventory', path: '/inventory', icon: Warehouse, available: true }] }] : []),
-    {
+    ...((hasPermission('users.view') || hasPermission('inventory.view')) ? [{ title: 'COMPANY', items: [
+      ...(hasPermission('users.view') ? [{ label: 'Team and access', path: '/users', icon: Users, available: true }] : []),
+      ...(hasPermission('inventory.view') ? [{ label: 'Inventory', path: '/inventory', icon: Warehouse, available: true }] : []),
+    ] }] : []),
+    ...(!isWorker ? [{
       title: 'COMING SOON',
       items: [
         { label: 'Production', icon: Layers3 },
@@ -24,7 +28,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
         { label: 'Assets', icon: Building2 },
         { label: 'Reports', icon: ClipboardList },
       ],
-    },
+    }] : []),
   ]
 
   return (

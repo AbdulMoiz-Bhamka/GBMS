@@ -14,6 +14,7 @@ import AdminLayout from './Components/Layout/AdminLayout'
 import RoleRoute from './auth/RoleRoute'
 import CompaniesPage from './pages/Companies/CompaniesPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
+import UsersPage from './pages/Users/UsersPage'
 
 const links = [
   ['Overview', '#home'],
@@ -216,7 +217,10 @@ function App() {
           <Route element={<RoleRoute allowedRoles={['SUPER_ADMIN']} />}>
             <Route path="/companies" element={<CompaniesPage />} />
           </Route>
-          <Route element={<RoleRoute allowedRoles={['COMPANY_ADMIN', 'SUB_ADMIN', 'INVENTORY_USER']} />}>
+          <Route element={<RoleRoute requiredPermission="users.view" requiresCompany />}>
+            <Route path="/users" element={<UsersPage />} />
+          </Route>
+          <Route element={<RoleRoute requiredPermission="inventory.view" requiresCompany />}>
             <Route path="/inventory" element={<InventoryPage />} />
           </Route>
         </Route>

@@ -1,3 +1,4 @@
+# app/db/connection.py
 """SQL Server connection lifecycle and cursor helpers."""
 
 from contextlib import contextmanager

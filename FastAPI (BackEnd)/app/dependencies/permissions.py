@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException
 
 from app.dependencies.auth import get_current_user
+from app.core.permissions import has_permission
 
 
 def require_super_admin(user=Depends(get_current_user)):
@@ -12,10 +13,36 @@ def require_super_admin(user=Depends(get_current_user)):
 
 
 def require_company_user(user=Depends(get_current_user)):
-    inventory_roles = {"COMPANY_ADMIN", "SUB_ADMIN", "INVENTORY_USER"}
-    if user["role_name"] not in inventory_roles or user["company_id"] is None:
+    if (
+        user["company_id"] is None
+        or not has_permission(user, "inventory.view")
+    ):
         raise HTTPException(
             status_code=403,
-            detail="An authorized company inventory role is required.",
+            detail="You do not have permission to access inventory.",
         )
     return user
+
+
+def require_permission(permission_code):
+    def dependency(user=Depends(get_current_user)):
+        if not has_permission(user, permission_code):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission required: {permission_code}.",
+            )
+        return user
+
+    return dependency
+
+
+def require_company_permission(permission_code):
+    def dependency(user=Depends(get_current_user)):
+        if user.get("company_id") is None or not has_permission(user, permission_code):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Company permission required: {permission_code}.",
+            )
+        return user
+
+    return dependency
