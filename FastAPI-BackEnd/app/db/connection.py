@@ -10,8 +10,10 @@ from app.core.config import DB_DRIVER, DB_NAME, DB_PASSWORD, DB_SERVER, DB_USER
 
 
 def get_connection():
-    if DB_USER and DB_PASSWORD:
-        auth = f"UID={DB_USER};PWD={DB_PASSWORD};"
+    db_user = DB_USER.strip()
+    db_password = DB_PASSWORD.strip()
+    if db_user and db_password:
+        auth = f"UID={db_user};PWD={db_password};"
     else:
         auth = "Trusted_Connection=yes;"
     connection_string = (

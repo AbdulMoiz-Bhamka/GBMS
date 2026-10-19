@@ -390,6 +390,50 @@ BEGIN
 END;
 GO
 
+-- Password recovery support. Existing users retain their current access and
+-- receive token version 0; no user records are recreated or reset.
+IF COL_LENGTH(N'dbo.Users', N'MustChangePassword') IS NULL
+BEGIN
+    ALTER TABLE dbo.Users ADD MustChangePassword BIT NOT NULL
+        CONSTRAINT DF_Users_MustChangePassword DEFAULT (0) WITH VALUES;
+END;
+GO
+
+IF COL_LENGTH(N'dbo.Users', N'AuthVersion') IS NULL
+BEGIN
+    ALTER TABLE dbo.Users ADD AuthVersion INT NOT NULL
+        CONSTRAINT DF_Users_AuthVersion DEFAULT (0) WITH VALUES;
+END;
+GO
+
+IF COL_LENGTH(N'dbo.Users', N'TemporaryPasswordExpiresAt') IS NULL
+BEGIN
+    ALTER TABLE dbo.Users ADD TemporaryPasswordExpiresAt DATETIME2(0) NULL;
+END;
+GO
+
+IF OBJECT_ID(N'dbo.PasswordSecurityAudit', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PasswordSecurityAudit
+    (
+        AuditID BIGINT IDENTITY(1,1) NOT NULL
+            CONSTRAINT PK_PasswordSecurityAudit PRIMARY KEY,
+        UserID INT NOT NULL,
+        ActorUserID INT NULL,
+        EventType NVARCHAR(60) NOT NULL,
+        SourceIP NVARCHAR(45) NULL,
+        CreatedAt DATETIME2(0) NOT NULL
+            CONSTRAINT DF_PasswordSecurityAudit_CreatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_PasswordSecurityAudit_User FOREIGN KEY (UserID)
+            REFERENCES dbo.Users(UserID),
+        CONSTRAINT FK_PasswordSecurityAudit_Actor FOREIGN KEY (ActorUserID)
+            REFERENCES dbo.Users(UserID)
+    );
+    CREATE INDEX IX_PasswordSecurityAudit_User_CreatedAt
+        ON dbo.PasswordSecurityAudit(UserID, CreatedAt DESC);
+END;
+GO
+
 IF OBJECT_ID(N'dbo.PermissionCatalog', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.PermissionCatalog

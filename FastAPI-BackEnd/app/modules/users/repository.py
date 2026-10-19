@@ -5,7 +5,8 @@ def get_auth_user_by_id(cursor, user_id):
     return cursor.execute(
         """SELECT u.UserID, u.Username, u.FullName, u.Email, r.RoleName,
                   u.AccountStatus, u.CompanyID, c.CompanyStatus,
-                  u.PermissionsConfigured
+                  u.PermissionsConfigured, u.MustChangePassword, u.AuthVersion,
+                  u.TemporaryPasswordExpiresAt
            FROM dbo.Users AS u
            JOIN dbo.Roles AS r ON r.RoleID = u.RoleID
            LEFT JOIN dbo.Companies AS c ON c.CompanyID = u.CompanyID
@@ -18,7 +19,8 @@ def get_login_user_by_username(cursor, username):
     return cursor.execute(
         """SELECT u.UserID, u.Username, u.FullName, u.Email, r.RoleName,
                   u.AccountStatus, u.PasswordHash, u.CompanyID, c.CompanyStatus,
-                  u.PermissionsConfigured
+                  u.PermissionsConfigured, u.MustChangePassword, u.AuthVersion,
+                  u.TemporaryPasswordExpiresAt
            FROM dbo.Users AS u
            JOIN dbo.Roles AS r ON r.RoleID = u.RoleID
            LEFT JOIN dbo.Companies AS c ON c.CompanyID = u.CompanyID
@@ -52,6 +54,65 @@ def get_company_user(cursor, company_id, user_id):
         company_id,
         user_id,
     ).fetchone()
+
+
+def get_password_credentials(cursor, user_id):
+    return cursor.execute(
+        """SELECT PasswordHash, MustChangePassword, AuthVersion
+           FROM dbo.Users WITH (UPDLOCK, ROWLOCK)
+           WHERE UserID = ?""",
+        user_id,
+    ).fetchone()
+
+
+def update_own_password(cursor, user_id, auth_version, password_hash):
+    return cursor.execute(
+        """UPDATE dbo.Users
+           SET PasswordHash = ?, MustChangePassword = 0,
+               TemporaryPasswordExpiresAt = NULL,
+               AuthVersion = AuthVersion + 1, UpdatedAt = SYSUTCDATETIME()
+           WHERE UserID = ? AND AuthVersion = ?""",
+        password_hash,
+        user_id,
+        auth_version,
+    )
+
+
+def reset_company_user_password(cursor, company_id, user_id, password_hash):
+    return cursor.execute(
+        """UPDATE dbo.Users
+           SET PasswordHash = ?, MustChangePassword = 1,
+               TemporaryPasswordExpiresAt = DATEADD(HOUR, 24, SYSUTCDATETIME()),
+               AuthVersion = AuthVersion + 1, UpdatedAt = SYSUTCDATETIME()
+           WHERE CompanyID = ? AND UserID = ?""",
+        password_hash,
+        company_id,
+        user_id,
+    )
+
+
+def reset_super_admin_password(cursor, user_id, password_hash):
+    return cursor.execute(
+        """UPDATE dbo.Users
+           SET PasswordHash = ?, MustChangePassword = 1,
+               TemporaryPasswordExpiresAt = DATEADD(HOUR, 24, SYSUTCDATETIME()),
+               AuthVersion = AuthVersion + 1, UpdatedAt = SYSUTCDATETIME()
+           WHERE UserID = ? AND CompanyID IS NULL
+             AND RoleID = (SELECT RoleID FROM dbo.Roles WHERE RoleName = N'SUPER_ADMIN')""",
+        password_hash,
+        user_id,
+    )
+
+
+def insert_password_audit(cursor, user_id, actor_user_id, event_type, source_ip):
+    cursor.execute(
+        """INSERT INTO dbo.PasswordSecurityAudit (UserID, ActorUserID, EventType, SourceIP)
+           VALUES (?, ?, ?, ?)""",
+        user_id,
+        actor_user_id,
+        event_type,
+        source_ip,
+    )
 
 
 def list_user_permissions(cursor, user_id):

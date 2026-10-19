@@ -42,5 +42,8 @@ export function apiRequest(path, options = {}) {
 export const authService = {
   login: (credentials) => request('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   me: (token) => request('/api/v1/auth/me', { token }),
+  changePassword: (payload) => apiRequest('/api/v1/auth/change-password', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
   dashboard: (token) => request('/api/v1/dashboard', { token }),
 }

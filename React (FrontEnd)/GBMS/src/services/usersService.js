@@ -25,4 +25,7 @@ export const usersService = {
   delete: (companyId, userId) => apiRequest(`${companyUsersPath(companyId)}/${userId}`, {
     method: 'DELETE',
   }),
+  resetPassword: (companyId, userId) => apiRequest(`${companyUsersPath(companyId)}/${userId}/password-reset`, {
+    method: 'POST',
+  }),
 }

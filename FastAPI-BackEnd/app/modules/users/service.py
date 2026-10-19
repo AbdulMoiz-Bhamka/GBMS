@@ -10,7 +10,7 @@ from app.core.permissions import (
     effective_permissions,
     has_permission,
 )
-from app.core.security import password_hasher
+from app.core.security import generate_temporary_password, password_hasher
 from app.db.connection import database_connection, database_cursor
 from app.modules.roles.service import get_role_id
 from app.modules.users import repository
@@ -27,6 +27,7 @@ def public_user(
     company_id,
     company_status,
     permissions=(),
+    must_change_password=False,
 ):
     return {
         "user_id": user_id,
@@ -37,6 +38,7 @@ def public_user(
         "company_id": company_id,
         "company_status": company_status,
         "permissions": list(permissions),
+        "must_change_password": bool(must_change_password),
     }
 
 
@@ -60,7 +62,7 @@ def permissions_for_user(cursor, user_id, role_name, configured):
     return effective_permissions(role_name, bool(configured), assigned)
 
 
-def get_authenticated_user(user_id):
+def get_authenticated_user(user_id, token_version=0):
     unauthorized = HTTPException(
         status_code=401,
         detail="Your session is invalid or has expired.",
@@ -70,6 +72,8 @@ def get_authenticated_user(user_id):
         row = repository.get_auth_user_by_id(cursor, user_id)
         if not row:
             raise unauthorized
+        if int(row[10]) != token_version:
+            raise unauthorized
         if row[5] != "ACTIVE":
             raise HTTPException(
                 status_code=403,
@@ -77,7 +81,51 @@ def get_authenticated_user(user_id):
             )
         validate_role_company(row[4], row[6], row[7])
         permissions = permissions_for_user(cursor, row[0], row[4], row[8])
-    return public_user(*row[:5], row[6], row[7], permissions)
+    return public_user(*row[:5], row[6], row[7], permissions, bool(row[9]))
+
+
+def reset_company_user_password(actor, company_id, user_id, source_ip=None):
+    company_id = _company_for_actor(actor, company_id)
+    _require(actor, "users.update")
+    if user_id == actor.get("user_id"):
+        raise HTTPException(status_code=400, detail="Use Change password to update your own password.")
+
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        existing = repository.get_company_user(cursor, company_id, user_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="User not found.")
+        target_role = existing[4]
+        if target_role == "SUPER_ADMIN":
+            raise HTTPException(status_code=403, detail="Super Admin credentials cannot be reset here.")
+        if target_role == "COMPANY_ADMIN" and actor["role_name"] != "SUPER_ADMIN":
+            raise HTTPException(status_code=403, detail="Only the Super Admin can help recover a Company Admin account.")
+        if target_role not in COMPANY_USER_ROLES and target_role != "COMPANY_ADMIN":
+            raise HTTPException(status_code=403, detail="This account role cannot be reset through company user management.")
+
+        temporary_password = generate_temporary_password()
+        password_hash = password_hasher.hash(temporary_password)
+        result = repository.reset_company_user_password(
+            cursor, company_id, user_id, password_hash
+        )
+        if result.rowcount != 1:
+            raise HTTPException(status_code=404, detail="User not found.")
+        actor_id = actor.get("user_id")
+        event_type = (
+            "PASSWORD_RESET_BY_SUPER_ADMIN"
+            if actor["role_name"] == "SUPER_ADMIN"
+            else "PASSWORD_RESET_BY_COMPANY_ADMIN"
+        )
+        repository.insert_password_audit(
+            cursor, user_id, actor_id, event_type, source_ip
+        )
+        connection.commit()
+
+    return {
+        "user_id": user_id,
+        "username": existing[1],
+        "temporary_password": temporary_password,
+        "must_change_password": True,
+    }
 
 
 def _company_for_actor(actor, requested_company_id):

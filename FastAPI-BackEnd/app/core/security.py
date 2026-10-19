@@ -1,6 +1,8 @@
-"""JWT and Argon2 helpers. Token claims and password hashing stay unchanged."""
+"""JWT and Argon2 helpers, including versioned access tokens."""
 
 from datetime import datetime, timedelta, timezone
+import secrets
+import string
 
 import jwt
 from argon2 import PasswordHasher
@@ -10,7 +12,7 @@ from app.core.config import JWT_ALGORITHM, JWT_SECRET, TOKEN_MINUTES
 password_hasher = PasswordHasher()
 
 
-def make_token(user):
+def make_token(user, auth_version=0):
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {
@@ -18,6 +20,7 @@ def make_token(user):
             "iat": now,
             "exp": now + timedelta(minutes=TOKEN_MINUTES),
             "type": "access",
+            "ver": int(auth_version),
         },
         JWT_SECRET,
         algorithm=JWT_ALGORITHM,
@@ -33,4 +36,13 @@ def user_id_from_token(token):
     )
     if claims.get("type") != "access":
         raise jwt.InvalidTokenError("Invalid token type")
-    return int(claims["sub"])
+    return int(claims["sub"]), int(claims.get("ver", 0))
+
+
+def generate_temporary_password(length=24):
+    """Generate a one-use temporary password with letters and digits."""
+    alphabet = string.ascii_letters + string.digits + "-_"
+    characters = [secrets.choice(string.ascii_letters), secrets.choice(string.digits)]
+    characters.extend(secrets.choice(alphabet) for _ in range(length - len(characters)))
+    secrets.SystemRandom().shuffle(characters)
+    return "".join(characters)

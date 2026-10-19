@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, LoaderCircle, Pencil, Plus, Power, Search, ShieldCheck, Trash2, UserRound, Users, X } from 'lucide-react'
+import { Check, Clipboard, KeyRound, LoaderCircle, Pencil, Plus, Power, Search, ShieldCheck, Trash2, UserRound, Users, X } from 'lucide-react'
 import { useAuth } from '../../auth/useAuth'
 import { usersService } from '../../services/usersService'
 
@@ -25,6 +25,8 @@ export default function UsersPage() {
   const [success, setSuccess] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
+  const [resetCredential, setResetCredential] = useState(null)
+  const [resettingUserId, setResettingUserId] = useState(null)
   const [form, setForm] = useState(blankForm)
   const canEditAccess = canAssignRoles
     && (!editingUser || editingUser.user_id !== user?.user_id)
@@ -159,6 +161,22 @@ export default function UsersPage() {
     }
   }
 
+  const resetPassword = async (account) => {
+    if (!window.confirm(`Create a one-time temporary password for ${account.full_name}? Their current sessions will be signed out.`)) return
+    setError('')
+    setSuccess('')
+    setResettingUserId(account.user_id)
+    try {
+      const result = await usersService.resetPassword(companyId, account.user_id)
+      setResetCredential(result)
+      setSuccess(`Temporary password created for ${account.username}. Share it privately; it is shown only once.`)
+    } catch (failure) {
+      setError(failure.message || 'Could not reset this password.')
+    } finally {
+      setResettingUserId(null)
+    }
+  }
+
   return (
     <section className="space-y-6 text-slate-800">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -174,6 +192,14 @@ export default function UsersPage() {
 
       {error && !formOpen && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</p>}
       {success && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{success}</p>}
+
+      {resetCredential && <div role="dialog" aria-modal="true" aria-labelledby="reset-password-title" className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/40 p-4">
+        <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-50 text-sky-700"><KeyRound size={19} /></span><div><h2 id="reset-password-title" className="font-semibold">Temporary password</h2><p className="text-xs text-slate-500">For {resetCredential.username}</p></div></div>
+          <p className="mt-4 text-sm text-slate-600">Give this password to the user privately. They must choose a new password at next sign-in. This value will not be shown again.</p>
+          <code className="mt-3 block break-all rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">{resetCredential.temporary_password}</code>
+          <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={async () => { try { await navigator.clipboard.writeText(resetCredential.temporary_password) } catch { setError('Clipboard access failed. Select and copy the password manually.') } }} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"><Clipboard size={15} /> Copy</button><button type="button" onClick={() => setResetCredential(null)} className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white">Done</button></div>
+        </section>
+      </div>}
 
       {formOpen && <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-slate-950/40 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setFormOpen(false) }}>
         <section role="dialog" aria-modal="true" aria-labelledby="user-form-title" className="my-auto max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -219,7 +245,7 @@ export default function UsersPage() {
                 <td className="px-5 py-4">{account.role_name.replaceAll('_', ' ')}</td>
                 <td className="px-5 py-4"><span className="text-xs text-slate-600">{(account.permission_codes || []).length} granted</span><div className="mt-1 flex max-w-xs flex-wrap gap-1">{(account.permission_codes || []).slice(0, 3).map((code) => <span key={code} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{code}</span>)}{(account.permission_codes || []).length > 3 && <span className="text-[10px] text-slate-400">+{account.permission_codes.length - 3}</span>}</div></td>
                 <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${account.account_status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{account.account_status}</span></td>
-                <td className="px-5 py-4"><div className="flex justify-end gap-2">{canEditUsers && <button type="button" onClick={() => openEdit(account)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Pencil size={14} /> Edit</button>}{canChangeStatus && account.user_id !== user?.user_id && <button type="button" onClick={() => toggleStatus(account)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${account.account_status === 'ACTIVE' ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}><Power size={14} />{account.account_status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</button>}{canDeleteUsers && account.user_id !== user?.user_id && <button type="button" onClick={() => deleteUser(account)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"><Trash2 size={14} /> Delete</button>}</div></td>
+                <td className="px-5 py-4"><div className="flex justify-end gap-2">{canEditUsers && <button type="button" onClick={() => openEdit(account)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Pencil size={14} /> Edit</button>}{canEditUsers && account.user_id !== user?.user_id && <button type="button" disabled={resettingUserId === account.user_id} onClick={() => resetPassword(account)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"><KeyRound size={14} />{resettingUserId === account.user_id ? 'Resetting…' : 'Reset password'}</button>}{canChangeStatus && account.user_id !== user?.user_id && <button type="button" onClick={() => toggleStatus(account)} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${account.account_status === 'ACTIVE' ? 'border-rose-200 text-rose-700 hover:bg-rose-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'}`}><Power size={14} />{account.account_status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</button>}{canDeleteUsers && account.user_id !== user?.user_id && <button type="button" onClick={() => deleteUser(account)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"><Trash2 size={14} /> Delete</button>}</div></td>
               </tr>)}
               {!loading && users.length === 0 && <tr><td colSpan={6} className="px-5 py-14 text-center"><Users size={26} className="mx-auto text-slate-300" /><p className="mt-3 font-medium text-slate-700">No company users found</p><p className="mt-1 text-sm text-slate-500">Create a user account to give a teammate access to this workspace.</p></td></tr>}
             </tbody>

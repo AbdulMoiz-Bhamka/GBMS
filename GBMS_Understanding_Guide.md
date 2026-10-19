@@ -425,7 +425,7 @@ Each module follows: **A** overview · **B** files · **C** execution flow · **
 
 **Routes** (`router.py`, both `require_super_admin`): `GET /companies/{company_id}/users`, `POST /companies/{company_id}/users` (201). `company_id` is validated `Path(gt=0)`.
 
-**Not present [V]:** editing a user, deactivating a user, resetting/changing passwords, deleting users.
+**User management:** edit, deactivate, delete, and password-reset actions are available in the company user-management flow; password changes and reset security are described in §16.
 
 **G. Example.** Super Admin creates `ali.inv` with role `INVENTORY_USER` for company 3 → row inserted with `CompanyID = 3` (taken from the URL, which only a Super Admin can call) → trigger accepts it (non-super role has a company).
 
@@ -884,7 +884,7 @@ OFFSET ? ROWS FETCH NEXT ? ROWS ONLY                 -- pagination (needs ORDER 
 | 4 | **No login rate-limiting or lockout.** | `auth/router.py`, `auth/service.py` | [V] absent |
 | 5 | Unknown username returns before Argon2 runs, so response time may differ from a wrong password (username enumeration by timing). | `auth/service.login` | [I] |
 | 6 | No frontend handling of 401 mid-session; expired token yields per-page errors instead of a clean sign-out. | `authService.request` | [V] UX/security hygiene |
-| 7 | No endpoints to change/reset passwords or deactivate individual users. Temporary passwords set by the Super Admin cannot be changed by the user. | users module | [V] absent |
+| 7 | Password change/reset APIs and a mandatory change page now exist; apply the password migration described in §16 before using them. | auth/users modules | implemented; see §16 |
 | 8 | `TrustServerCertificate=yes` disables SQL Server certificate validation. | `db/connection.py` | [V] Acceptable locally; review for production |
 | 9 | `ALLOWED_ORIGINS` always includes localhost origins even if `CORS_ORIGINS` is configured otherwise. | `core/config.py` | [V] |
 | 10 | `VITE_API_BASE_URL` is set to `http://localhost:5173` (the Vite server, with a leading space in the file). It works in dev through the proxy, but a production build would bake in that value. | `.env.local`, `authService.js` line 2 | [V] value; [I] effect |
@@ -991,7 +991,7 @@ All paths are prefixed with `/api/v1` unless noted. "DB" = the main database ope
 - Inventory has **no stock levels, movements, warehouses, or delete**.
 - Dashboard has no data; landing page numbers are static samples.
 - Topbar search and notifications bell do nothing.
-- No user edit/deactivate, password change/reset, or logout endpoint.
+- Password change/reset and user-management endpoints are described in §16; frontend logout clears the local session and password versioning invalidates previous tokens.
 - No per-user permission model beyond three role names.
 
 **Duplicated or confusing code [V]**
@@ -1067,5 +1067,31 @@ createRoot(document.getElementById('root')).render(
 3. At **server startup**, when `app.core.config` is first imported (it raises `RuntimeError`). Failing early prevents running with an insecure/placeholder signing secret.
 
 ---
+
+## 16. Password changes and recovery
+
+### Passwords and change flow
+
+GBMS never keeps a readable password. The API hashes passwords with the existing Argon2 hasher and checks a submitted password against that hash at sign-in or password change. A forgotten password cannot be displayed; an authorized reset generates a new temporary password instead.
+
+Signed-in users open **Password & security** from the top-right account menu. They enter their current password, choose a new password of at least 12 characters containing a letter and a number, and confirm it. The API validates the current password, writes the new Argon2 hash to the same `UserID`, records a credential-free audit event, clears `MustChangePassword`, and increments `AuthVersion`.
+
+The JWT includes `AuthVersion`. Each authenticated API request compares the token version with the current database version. Password change and reset increment that version, so existing sessions stop working. A user whose account was reset can only call `/api/v1/auth/me` and `/api/v1/auth/change-password` until the new password is saved.
+
+### Admin reset and tenant protection
+
+On **Team and access**, an authorized official with `users.update` can reset another managed company user, but not their own account. The API derives the acting user's company from the authenticated account, checks the target is in that company, and blocks unsupported platform roles. The temporary password is generated with Python's `secrets`, only its Argon2 hash is stored, and the clear value is returned once to the authorized official for private handover. It expires after 24 hours and the user must replace it at next sign-in. Do not send it through a public channel or keep a screenshot of it.
+
+A Super Admin can help recover a Company Admin from **Companies → Accounts → Reset password**. The same one-time, forced-change procedure applies. There is no SMTP configuration, so GBMS does not claim to send recovery email.
+
+### Locked-out Super Admin
+
+There is no public Super Admin reset endpoint. A trusted operator with access to the configured backend environment and SQL Server can run `python recover_super_admin.py` from `FastAPI-BackEnd`. The script asks for the existing Super Admin username, verifies its database role and platform scope, rotates the password, increments `AuthVersion`, audits the action, and prints a generated temporary password once. Run it only on a trusted machine; give the password privately to the Super Admin, who must change it after signing in.
+
+### Database setup, tests, and limitations
+
+The idempotent additions are in `SQL Server Query/GBMS_DB.sql`: `Users.MustChangePassword`, `Users.AuthVersion`, `Users.TemporaryPasswordExpiresAt`, and `PasswordSecurityAudit`. Existing users get `MustChangePassword = 0` and `AuthVersion = 0`; no user or business records are recreated. **Apply the script in SQL Server Management Studio before starting the updated backend.** This project change does not execute SQL against your database.
+
+No new environment values are required. The recovery script uses the existing `DB_SERVER`, `DB_NAME`, `DB_DRIVER`, and either `DB_USER`/`DB_PASSWORD` or Windows trusted authentication settings; importing app configuration also requires the existing `JWT_SECRET_KEY`. Run backend tests from `FastAPI-BackEnd` with `python -m unittest discover -s tests`. The password-management tests use mocked or isolated state and do not need the database migration. Run the frontend production build from `React (FrontEnd)/GBMS` with `npm run build`. Live password changes and resets require the SQL migration to be applied and a reachable SQL Server. Recovery currently relies on a trusted administrator to hand over a temporary password because email delivery and rate-limited recovery infrastructure are not configured.
 
 *End of guide. Continue with Lesson 2 whenever you're ready.*

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Building2, Check, ChevronLeft, ChevronRight, Pencil, Plus, Power, UserRound, X } from 'lucide-react'
+import { Building2, Check, ChevronLeft, ChevronRight, KeyRound, Pencil, Plus, Power, UserRound, X } from 'lucide-react'
 import { companyService } from '../../services/companyService'
+import { usersService } from '../../services/usersService'
 
 const emptyCompany = { company_name: '', company_code: '', email: '', phone: '', address: '' }
 
@@ -27,6 +28,8 @@ export default function CompaniesPage() {
   const [companyUsers, setCompanyUsers] = useState([])
   const [userForm, setUserForm] = useState({ username: '', full_name: '', email: '', password: '', role_name: 'COMPANY_ADMIN' })
   const [userSaving, setUserSaving] = useState(false)
+  const [resetCredential, setResetCredential] = useState(null)
+  const [resettingUserId, setResettingUserId] = useState(null)
   const limit = 20
 
   const loadCompanies = useCallback(async (requestedOffset = offset) => {
@@ -159,6 +162,20 @@ export default function CompaniesPage() {
     }
   }
 
+  const resetCompanyAdminPassword = async (account) => {
+    if (!window.confirm(`Reset ${account.full_name}'s Company Admin password? Their sessions will be revoked and they must change the temporary password at next sign-in.`)) return
+    setError('')
+    setResettingUserId(account.user_id)
+    try {
+      const result = await usersService.resetPassword(userCompany.company_id, account.user_id)
+      setResetCredential(result)
+    } catch (failure) {
+      setError(failure.message || 'Could not reset this Company Admin password.')
+    } finally {
+      setResettingUserId(null)
+    }
+  }
+
   const submitSearch = (event) => {
     event.preventDefault()
     setOffset(0)
@@ -191,9 +208,11 @@ export default function CompaniesPage() {
           <label className="text-sm font-medium text-slate-700">Role<select value={userForm.role_name} onChange={(e) => setUserForm({ ...userForm, role_name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal"><option value="COMPANY_ADMIN">Company Admin</option><option value="SUB_ADMIN">Sub Admin</option><option value="INVENTORY_USER">Inventory User</option></select></label>
           <div className="flex items-end"><button disabled={userSaving || userCompany.company_status !== 'ACTIVE'} className="inline-flex items-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-50"><UserRound size={16} />{userSaving ? 'Creating…' : 'Create login account'}</button></div>
         </form>
-        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-2">Person</th><th className="px-4 py-2">Username</th><th className="px-4 py-2">Role</th><th className="px-4 py-2">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{companyUsers.map((user) => <tr key={user.user_id}><td className="px-4 py-3">{user.full_name}<span className="block text-xs text-slate-500">{user.email}</span></td><td className="px-4 py-3 font-mono text-xs">{user.username}</td><td className="px-4 py-3">{user.role_name.replaceAll('_', ' ')}</td><td className="px-4 py-3">{user.account_status}</td></tr>)}{companyUsers.length === 0 && <tr><td colSpan={4} className="px-4 py-6 text-center text-slate-500">No accounts yet. Create the company administrator above.</td></tr>}</tbody></table></div>
+        <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-2">Person</th><th className="px-4 py-2">Username</th><th className="px-4 py-2">Role</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Recovery</th></tr></thead><tbody className="divide-y divide-slate-100">{companyUsers.map((account) => <tr key={account.user_id}><td className="px-4 py-3">{account.full_name}<span className="block text-xs text-slate-500">{account.email}</span></td><td className="px-4 py-3 font-mono text-xs">{account.username}</td><td className="px-4 py-3">{account.role_name.replaceAll('_', ' ')}</td><td className="px-4 py-3">{account.account_status}</td><td className="px-4 py-3">{account.role_name === 'COMPANY_ADMIN' && <button type="button" disabled={resettingUserId === account.user_id} onClick={() => resetCompanyAdminPassword(account)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"><KeyRound size={14} />{resettingUserId === account.user_id ? 'Resetting…' : 'Reset password'}</button>}</td></tr>)}{companyUsers.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-500">No accounts yet. Create the company administrator above.</td></tr>}</tbody></table></div>
         <p className="mt-3 text-xs text-slate-500">The new user signs in through the existing GBMS login screen. Company data access is limited to this company.</p>
       </div>}
+
+      {resetCredential && <div role="dialog" aria-modal="true" aria-labelledby="admin-reset-title" className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/40 p-4"><section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><h2 id="admin-reset-title" className="font-semibold">One-time Company Admin password</h2><p className="mt-1 text-sm text-slate-500">Share privately with {resetCredential.username}. The admin must change it at the next sign-in.</p><code className="mt-4 block break-all rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">{resetCredential.temporary_password}</code><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={async () => { try { await navigator.clipboard.writeText(resetCredential.temporary_password) } catch { setError('Clipboard access failed. Select and copy the password manually.') } }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">Copy password</button><button type="button" onClick={() => setResetCredential(null)} className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white">Done</button></div></section></div>}
 
       {formOpen && (
         <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

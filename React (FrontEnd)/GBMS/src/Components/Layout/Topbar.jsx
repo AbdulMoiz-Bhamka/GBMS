@@ -1,6 +1,6 @@
 // src/Components/Layout/Topbar.jsx
 import { useEffect, useRef, useState } from 'react'
-import { Bell, ChevronDown, LogOut, Menu, Search, UserRound } from 'lucide-react'
+import { Bell, ChevronDown, KeyRound, LogOut, Menu, Search, UserRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/useAuth'
 
@@ -79,6 +79,9 @@ export default function Topbar({ onMenuClick = () => {} }) {
                   <p className="truncate text-sm font-semibold text-slate-800">{displayName}</p>
                   <p className="text-xs text-slate-500">{user?.role_name || 'Administrator'}</p>
                 </div>
+                <button type="button" role="menuitem" onClick={() => { setProfileOpen(false); navigate('/security') }} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                  <KeyRound size={16} /> Password &amp; security
+                </button>
                 <button type="button" role="menuitem" onClick={handleLogout} className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50">
                   <LogOut size={16} /> Sign out
                 </button>

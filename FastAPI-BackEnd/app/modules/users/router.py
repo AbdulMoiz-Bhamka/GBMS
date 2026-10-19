@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 
 from app.dependencies.auth import get_current_user
 from app.modules.users import service
@@ -74,3 +74,18 @@ def delete_company_user(
     actor=Depends(get_current_user),
 ):
     return service.delete_company_user(actor, company_id, user_id)
+
+
+@router.post("/companies/{company_id}/users/{user_id}/password-reset")
+def reset_company_user_password(
+    request: Request,
+    company_id: int = Path(gt=0),
+    user_id: int = Path(gt=0),
+    actor=Depends(get_current_user),
+):
+    return service.reset_company_user_password(
+        actor,
+        company_id,
+        user_id,
+        request.client.host if request.client else None,
+    )

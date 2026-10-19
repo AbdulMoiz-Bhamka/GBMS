@@ -16,6 +16,7 @@ import CompaniesPage from './pages/Companies/CompaniesPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
 import UsersPage from './pages/Users/UsersPage'
 import SuppliersPage from './pages/Suppliers/SuppliersPage'
+import PasswordSecurityPage from './pages/Auth/PasswordSecurityPage'
 
 const links = [
   ['Overview', '#home'],
@@ -213,6 +214,7 @@ function App() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route element={<ProtectedRoute />}>
+        <Route path="/change-password" element={<PasswordSecurityPage forced />} />
         <Route element={<AdminLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route element={<RoleRoute allowedRoles={['SUPER_ADMIN']} />}>
@@ -227,6 +229,7 @@ function App() {
           <Route element={<RoleRoute requiredPermission="suppliers.view" requiresCompany />}>
             <Route path="/suppliers" element={<SuppliersPage />} />
           </Route>
+          <Route path="/security" element={<PasswordSecurityPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
