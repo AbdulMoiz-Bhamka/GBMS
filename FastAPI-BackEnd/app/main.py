@@ -1,3 +1,4 @@
+# app/main.py
 """FastAPI app construction and router registration."""
 
 from fastapi import FastAPI
