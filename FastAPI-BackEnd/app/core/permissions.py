@@ -12,6 +12,10 @@ PERMISSION_LABELS = {
     "inventory.view": "View inventory",
     "inventory.create": "Create inventory records",
     "inventory.update": "Edit inventory records",
+    "suppliers.view": "View company suppliers",
+    "suppliers.create": "Create company suppliers",
+    "suppliers.update": "Edit company suppliers",
+    "suppliers.deactivate": "Activate or deactivate suppliers",
 }
 
 WORKER_ROLE = "WORKER"
@@ -30,6 +34,10 @@ COMPANY_ADMIN_PERMISSIONS = frozenset(
         "inventory.view",
         "inventory.create",
         "inventory.update",
+        "suppliers.view",
+        "suppliers.create",
+        "suppliers.update",
+        "suppliers.deactivate",
     }
 )
 LEGACY_INVENTORY_PERMISSIONS = frozenset(

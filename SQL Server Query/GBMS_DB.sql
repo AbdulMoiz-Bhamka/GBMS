@@ -316,6 +316,68 @@ IF NOT EXISTS (
     CREATE INDEX IX_Products_Company_Category ON dbo.Products(CompanyID, CategoryID);
 GO
 
+/* Company-owned supplier directory. Additive and safe to rerun. The composite
+   unique key supports future company-safe purchasing foreign keys. */
+IF OBJECT_ID(N'dbo.Suppliers', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Suppliers
+    (
+        SupplierID INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_Suppliers PRIMARY KEY,
+        CompanyID INT NOT NULL,
+        SupplierCode NVARCHAR(40) NOT NULL,
+        SupplierName NVARCHAR(180) NOT NULL,
+        ContactPerson NVARCHAR(160) NULL,
+        Email NVARCHAR(254) NULL,
+        Phone NVARCHAR(40) NULL,
+        AlternatePhone NVARCHAR(40) NULL,
+        Address NVARCHAR(400) NULL,
+        City NVARCHAR(100) NULL,
+        Country NVARCHAR(100) NULL,
+        TaxRegistrationNumber NVARCHAR(50) NULL,
+        PaymentTerms NVARCHAR(100) NULL,
+        Notes NVARCHAR(1000) NULL,
+        SupplierStatus NVARCHAR(20) NOT NULL
+            CONSTRAINT DF_Suppliers_SupplierStatus DEFAULT N'ACTIVE',
+        CreatedAt DATETIME2(0) NOT NULL
+            CONSTRAINT DF_Suppliers_CreatedAt DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2(0) NOT NULL
+            CONSTRAINT DF_Suppliers_UpdatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_Suppliers_Companies FOREIGN KEY (CompanyID)
+            REFERENCES dbo.Companies(CompanyID),
+        CONSTRAINT CK_Suppliers_SupplierStatus
+            CHECK (SupplierStatus IN (N'ACTIVE', N'INACTIVE')),
+        CONSTRAINT CK_Suppliers_SupplierCode_NotBlank
+            CHECK (LEN(LTRIM(RTRIM(SupplierCode))) > 0),
+        CONSTRAINT CK_Suppliers_SupplierName_NotBlank
+            CHECK (LEN(LTRIM(RTRIM(SupplierName))) > 0)
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.Suppliers') AND name = N'UQ_Suppliers_Company_Code'
+)
+    CREATE UNIQUE INDEX UQ_Suppliers_Company_Code
+        ON dbo.Suppliers(CompanyID, SupplierCode);
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.Suppliers') AND name = N'UQ_Suppliers_Company_SupplierID'
+)
+    CREATE UNIQUE INDEX UQ_Suppliers_Company_SupplierID
+        ON dbo.Suppliers(CompanyID, SupplierID);
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.Suppliers') AND name = N'IX_Suppliers_Company_Status_Name'
+)
+    CREATE INDEX IX_Suppliers_Company_Status_Name
+        ON dbo.Suppliers(CompanyID, SupplierStatus, SupplierName);
+GO
+
 /*
    User-level permissions. Existing users retain their current role-based
    inventory access through PermissionsConfigured = 0. New company users
@@ -373,7 +435,11 @@ FROM (VALUES
     (N'users.assign_role', N'Assign roles and permissions'),
     (N'inventory.view', N'View inventory'),
     (N'inventory.create', N'Create inventory records'),
-    (N'inventory.update', N'Edit inventory records')
+    (N'inventory.update', N'Edit inventory records'),
+    (N'suppliers.view', N'View company suppliers'),
+    (N'suppliers.create', N'Create company suppliers'),
+    (N'suppliers.update', N'Edit company suppliers'),
+    (N'suppliers.deactivate', N'Activate or deactivate suppliers')
 ) AS seed(PermissionCode, PermissionName)
 WHERE NOT EXISTS
     (SELECT 1 FROM dbo.PermissionCatalog p WHERE p.PermissionCode = seed.PermissionCode);
@@ -392,7 +458,9 @@ SELECT N'Roles', COUNT_BIG(*) FROM dbo.Roles
 UNION ALL
 SELECT N'ProductCategories', COUNT_BIG(*) FROM dbo.ProductCategories
 UNION ALL
-SELECT N'Products', COUNT_BIG(*) FROM dbo.Products;
+SELECT N'Products', COUNT_BIG(*) FROM dbo.Products
+UNION ALL
+SELECT N'Suppliers', COUNT_BIG(*) FROM dbo.Suppliers;
 GO
 SELECT RoleName, Description FROM dbo.Roles ORDER BY RoleID;
 GO

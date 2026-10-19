@@ -2,8 +2,6 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : 'https://gbms.onrender.com')).replace(/\/$/, '')
 const TOKEN_KEY = 'gbms_access_token'
 
-// Local Instance http://127.0.0.1:8000
-
 async function request(path, { token, ...options } = {}) {
   let response
   try {
@@ -16,7 +14,10 @@ async function request(path, { token, ...options } = {}) {
       },
     })
   } catch (error) {
-    if (error instanceof TypeError) throw new Error('Cannot reach the service https://gbms.onrender.com. Start the backend and check the Vite proxy.', { cause: error })
+    if (error instanceof TypeError) {
+      const destination = API_BASE || 'the local FastAPI server through the Vite proxy'
+      throw new Error(`Cannot reach ${destination}. Make sure the API server is running.`, { cause: error })
+    }
     throw error
   }
   const body = await response.json().catch(() => ({}))

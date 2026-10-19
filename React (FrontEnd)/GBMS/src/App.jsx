@@ -15,6 +15,7 @@ import RoleRoute from './auth/RoleRoute'
 import CompaniesPage from './pages/Companies/CompaniesPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
 import UsersPage from './pages/Users/UsersPage'
+import SuppliersPage from './pages/Suppliers/SuppliersPage'
 
 const links = [
   ['Overview', '#home'],
@@ -222,6 +223,9 @@ function App() {
           </Route>
           <Route element={<RoleRoute requiredPermission="inventory.view" requiresCompany />}>
             <Route path="/inventory" element={<InventoryPage />} />
+          </Route>
+          <Route element={<RoleRoute requiredPermission="suppliers.view" requiresCompany />}>
+            <Route path="/suppliers" element={<SuppliersPage />} />
           </Route>
         </Route>
       </Route>

@@ -9,6 +9,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.companies.router import router as companies_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.inventory.router import router as inventory_router
+from app.modules.suppliers.router import router as suppliers_router
 from app.modules.users.router import router as users_router
 
 app = FastAPI(title="GBMS API", version="1.1.0")
@@ -31,3 +32,4 @@ app.include_router(companies_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
+app.include_router(suppliers_router, prefix="/api/v1")

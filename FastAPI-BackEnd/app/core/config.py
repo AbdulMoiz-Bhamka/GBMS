@@ -37,5 +37,6 @@ ALLOWED_ORIGINS = sorted(
 )
 
 COMPANY_CODE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{1,29}$"
+SUPPLIER_CODE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{1,39}$"
 SKU_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,59}$"
 EMAIL_PATTERN = r"^[^\s@]+@[^\s@]+\.[^\s@]+$"

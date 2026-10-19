@@ -154,7 +154,13 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         self.assertNotIn("inventory.update", selected)
         self.assertTrue(has_permission({"role_name": "INVENTORY_USER", "permissions": selected}, "inventory.view"))
         self.assertFalse(has_permission({"role_name": "INVENTORY_USER", "permissions": selected}, "users.create"))
-        self.assertTrue(has_permission({"role_name": "COMPANY_ADMIN", "permissions": []}, "users.create"))
+        admin_permissions = effective_permissions("COMPANY_ADMIN", False)
+        self.assertTrue(
+            has_permission(
+                {"role_name": "COMPANY_ADMIN", "permissions": admin_permissions},
+                "users.create",
+            )
+        )
         self.assertEqual(effective_permissions("UNLISTED_ROLE", False), ["dashboard.view"])
 
     def test_company_user_operations_reject_a_different_tenant(self):
