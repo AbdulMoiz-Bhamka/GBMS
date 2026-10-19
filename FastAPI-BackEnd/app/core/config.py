@@ -1,3 +1,4 @@
+# app/core/config.py
 """Application settings loaded from the backend's local .env file."""
 
 import os
@@ -25,12 +26,14 @@ if not JWT_SECRET or JWT_SECRET == "replace-with-a-long-random-secret":
 configured_origins = {
     origin.strip().rstrip("/")
     for origin in os.getenv(
-        "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://gbms786.vercel.app",
     ).split(",")
     if origin.strip()
 }
 ALLOWED_ORIGINS = sorted(
-    configured_origins | {"http://localhost:5173", "http://127.0.0.1:5173"}
+    configured_origins
+    | {"http://localhost:5173", "http://127.0.0.1:5173", "https://gbms786.vercel.app"}
 )
 
 COMPANY_CODE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{1,29}$"
