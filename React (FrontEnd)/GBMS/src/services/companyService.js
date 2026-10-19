@@ -1,3 +1,4 @@
+// src/services/companyService.js
 import { apiRequest } from './authService'
 
 function queryString(params) {

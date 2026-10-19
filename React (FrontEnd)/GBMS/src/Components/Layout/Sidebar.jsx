@@ -1,3 +1,4 @@
+// src/Components/Layout/Sidebar.jsx
 import { NavLink } from 'react-router-dom'
 import {
   ArrowUpRight, BarChart3, Building2, ClipboardList, Layers3,

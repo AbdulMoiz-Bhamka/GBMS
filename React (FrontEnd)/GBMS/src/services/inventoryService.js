@@ -1,3 +1,4 @@
+// src/services/inventoryService.js
 import { apiRequest } from './authService'
 
 function queryString(params) {

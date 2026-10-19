@@ -1,3 +1,4 @@
+// src/pages/Dashboard/Dashboard.jsx
 import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowRight, Building2, CalendarCheck2, CircleDollarSign, Clock3,

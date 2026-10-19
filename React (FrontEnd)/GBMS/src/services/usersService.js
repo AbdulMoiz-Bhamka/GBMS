@@ -1,3 +1,4 @@
+// src/services/usersService.js
 import { apiRequest } from './authService'
 
 const companyUsersPath = (companyId) => `/api/v1/companies/${companyId}/users`

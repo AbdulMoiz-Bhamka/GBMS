@@ -1,3 +1,4 @@
+// src/services/dashboardService.js
 import { apiRequest } from './authService'
 
 export const dashboardService = {
