@@ -63,11 +63,42 @@ class DatabaseConfigurationTests(unittest.TestCase):
     def test_blank_whitespace_credentials_use_windows_authentication(self):
         with patch.object(db_connection, "DB_USER", "  "), patch.object(
             db_connection, "DB_PASSWORD", " \t "
-        ), patch.object(db_connection.pyodbc, "connect", return_value=object()) as connect:
+        ), patch.object(db_connection.sys, "platform", "win32"), patch.object(
+            db_connection.pyodbc, "connect", return_value=object()
+        ) as connect:
             db_connection.get_connection()
         connection_string = connect.call_args.args[0]
         self.assertIn("Trusted_Connection=yes;", connection_string)
         self.assertNotIn("UID=", connection_string)
+
+    def test_hosted_runtime_requires_sql_authentication(self):
+        with patch.object(db_connection, "DB_SERVER", "db.example.test"), patch.object(
+            db_connection, "DB_USER", " "
+        ), patch.object(
+            db_connection, "DB_PASSWORD", ""
+        ), patch.object(db_connection.sys, "platform", "linux"):
+            with self.assertRaises(HTTPException) as raised:
+                db_connection.get_connection()
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIn("DB_USER and DB_PASSWORD", raised.exception.detail)
+
+    def test_hosted_runtime_requires_external_database_host(self):
+        with patch.object(db_connection, "DB_SERVER", ""), patch.object(
+            db_connection.sys, "platform", "linux"
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                db_connection.get_connection()
+        self.assertIn("DB_SERVER", raised.exception.detail)
+
+    def test_tcp_port_is_used_for_hosted_sql_server(self):
+        with patch.object(db_connection, "DB_USER", "gbms_app"), patch.object(
+            db_connection, "DB_PASSWORD", "secret"
+        ), patch.object(db_connection, "DB_SERVER", "db.example.test"), patch.object(
+            db_connection, "DB_PORT", "1433"
+        ), patch.object(db_connection.pyodbc, "connect", return_value=object()) as connect:
+            db_connection.get_connection()
+        connection_string = connect.call_args.args[0]
+        self.assertIn("SERVER=tcp:db.example.test,1433;", connection_string)
 
 
 class ForcedChangeAccessTests(unittest.TestCase):

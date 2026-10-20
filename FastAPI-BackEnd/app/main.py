@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import ALLOWED_ORIGINS
+from app.db.connection import database_connection, database_cursor
 from app.modules.auth.router import router as auth_router
 from app.modules.companies.router import router as companies_router
 from app.modules.dashboard.router import router as dashboard_router
@@ -25,6 +26,14 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def readiness():
+    """Report ready only when the API can reach its configured SQL database."""
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        cursor.execute("SELECT 1").fetchone()
+    return {"status": "ready", "database": "connected"}
 
 
 app.include_router(auth_router, prefix="/api/v1")

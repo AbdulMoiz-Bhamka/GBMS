@@ -12,7 +12,10 @@ load_dotenv(BACKEND_ROOT / ".env")
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 TOKEN_MINUTES = int(os.getenv("ACCESS_TOKEN_MINUTES", "30"))
-DB_SERVER = os.getenv("DB_SERVER", r"AbdulMoiz\sqlserver16")
+DB_SERVER = os.getenv(
+    "DB_SERVER", r"AbdulMoiz\sqlserver16" if os.name == "nt" else ""
+).strip()
+DB_PORT = os.getenv("DB_PORT", "").strip()
 DB_NAME = os.getenv("DB_NAME", "GBMS")
 DB_DRIVER = os.getenv("DB_DRIVER", "ODBC Driver 18 for SQL Server")
 DB_USER = os.getenv("DB_USER", "")

@@ -1094,4 +1094,23 @@ The idempotent additions are in `SQL Server Query/GBMS_DB.sql`: `Users.MustChang
 
 No new environment values are required. The recovery script uses the existing `DB_SERVER`, `DB_NAME`, `DB_DRIVER`, and either `DB_USER`/`DB_PASSWORD` or Windows trusted authentication settings; importing app configuration also requires the existing `JWT_SECRET_KEY`. Run backend tests from `FastAPI-BackEnd` with `python -m unittest discover -s tests`. The password-management tests use mocked or isolated state and do not need the database migration. Run the frontend production build from `React (FrontEnd)/GBMS` with `npm run build`. Live password changes and resets require the SQL migration to be applied and a reachable SQL Server. Recovery currently relies on a trusted administrator to hand over a temporary password because email delivery and rate-limited recovery infrastructure are not configured.
 
+## 17. Render and DoctorHoster SQL Server deployment
+
+The API process can be healthy while its database is unreachable. `/health` only confirms that FastAPI has started; use `/health/ready` to check that the API can also execute `SELECT 1` against SQL Server. A failed ODBC connection now writes the safe server, database, driver, and underlying ODBC error to the Render log without logging the connection password.
+
+For a Docker-based Render backend, set **Root Directory** to `FastAPI-BackEnd` and choose the Docker runtime so Render builds the included `Dockerfile`. It installs Microsoft's ODBC Driver 18 and launches Uvicorn on Render's assigned `PORT`. Keep Render's deployment health check on `/health` so a database outage does not prevent the diagnostic API from starting; check `/health/ready` separately to verify SQL connectivity.
+
+Set these Render environment variables from the values supplied by DoctorHoster/Plesk:
+
+- `DB_SERVER`: externally reachable SQL Server host name (not `.` or `localhost`). If using a port, provide only the host here.
+- `DB_PORT`: the provider's SQL TCP port. Leave empty only if DoctorHoster explicitly supplies a reachable named-instance configuration.
+- `DB_NAME`: `GBMS` if that is the database shown in Plesk.
+- `DB_DRIVER`: `ODBC Driver 18 for SQL Server`.
+- `DB_USER` and `DB_PASSWORD`: the SQL-auth database user's login and password, set as Render secrets. Windows `Trusted_Connection` is only used for local Windows development; Render needs SQL authentication.
+- `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `ACCESS_TOKEN_MINUTES`, and `CORS_ORIGINS`: keep the existing API settings and include `https://gbms786.vercel.app` in `CORS_ORIGINS`.
+
+The Plesk row in the supplied screenshot shows `.` before the SQL Server instance. That is a local server/instance address; it does not establish that the database accepts connections from Render. In Plesk open the database's **Connection Info** and ask DoctorHoster for the public SQL host and TCP port. DoctorHoster must enable TCP remote access, open the SQL port through its firewall, and allow the Render service's outbound IP ranges (available in the Render service's Connect → Outbound panel). Do not open the database to every IP just to test it. Plesk documents SQL Server remote access/firewall controls and host/instance format; Render documents the outbound ranges for external services.
+
+After connectivity is ready, confirm `/health/ready` returns `{"status":"ready","database":"connected"}`. Then run the current idempotent `GBMS_DB.sql` setup/migration against the hosted GBMS database if its required columns/tables are not yet present. No hosted database migration is run by deploying this application.
+
 *End of guide. Continue with Lesson 2 whenever you're ready.*
