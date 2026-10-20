@@ -510,7 +510,3 @@ SELECT RoleName, Description FROM dbo.Roles ORDER BY RoleID;
 GO
 SELECT PermissionCode, PermissionName FROM dbo.PermissionCatalog ORDER BY PermissionCode;
 GO
-
-
-Select * From Roles;
-Select * From Users;
