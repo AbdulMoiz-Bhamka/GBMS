@@ -1,5 +1,5 @@
 ﻿/*
-    GBMS database setup
+    GBMS_Database database setup
     Run this single script in SQL Server Management Studio.
 
     Safe to rerun: it creates missing schema objects and seeds missing roles,
@@ -7,12 +7,12 @@
     It does not create users with passwords or display sensitive user records.
 */
 
--- 1. Create the GBMS database and the original authentication tables.
-IF DB_ID(N'GBMS') IS NULL
-    CREATE DATABASE [GBMS];
+-- 1. Create the GBMS_Database database and the original authentication tables.
+IF DB_ID(N'GBMS_Database') IS NULL
+    CREATE DATABASE [GBMS_Database];
 GO
 
-USE [GBMS];
+USE [GBMS_Database];
 GO
 
 IF OBJECT_ID(N'dbo.Roles', N'U') IS NULL
@@ -70,19 +70,19 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.Roles WHERE RoleName = N'SUPER_ADMIN')
     INSERT INTO dbo.Roles (RoleName, Description)
-    VALUES (N'SUPER_ADMIN', N'Full access to the GBMS workspace');
+    VALUES (N'SUPER_ADMIN', N'Full access to the GBMS_Database workspace');
 GO
 
 GO
 
 -- 2. Add multi-company and inventory schema and seed missing company roles.
 /*
-   GBMS multi-company and inventory foundation.
+   GBMS_Database multi-company and inventory foundation.
    Additive and repeatable: existing Roles, Users, password hashes, and
    other records are preserved. Run in SQL Server Management Studio or
-   sqlcmd while connected to the GBMS database.
+   sqlcmd while connected to the GBMS_Database database.
 */
-USE [GBMS];
+USE [GBMS_Database];
 GO
 
 IF OBJECT_ID(N'dbo.Companies', N'U') IS NULL
@@ -174,7 +174,7 @@ BEGIN
         WHERE (r.RoleName = N'SUPER_ADMIN' AND i.CompanyID IS NOT NULL)
            OR (r.RoleName <> N'SUPER_ADMIN' AND i.CompanyID IS NULL)
     )
-        THROW 51001, 'SUPER_ADMIN must have no company; every other GBMS role must have one company.', 1;
+        THROW 51001, 'SUPER_ADMIN must have no company; every other GBMS_Database role must have one company.', 1;
 END;
 GO
 
@@ -492,7 +492,7 @@ GO
 GO
 
 -- 3. Verify setup without displaying personal information or password hashes.
-USE [GBMS];
+USE [GBMS_Database];
 GO
 SELECT N'Companies' AS TableName, COUNT_BIG(*) AS RecordCount FROM dbo.Companies
 UNION ALL
