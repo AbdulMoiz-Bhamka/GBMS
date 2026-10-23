@@ -16,6 +16,7 @@ import CompaniesPage from './pages/Companies/CompaniesPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
 import UsersPage from './pages/Users/UsersPage'
 import SuppliersPage from './pages/Suppliers/SuppliersPage'
+import PurchaseOrdersPage from './pages/Purchasing/PurchaseOrdersPage'
 import PasswordSecurityPage from './pages/Auth/PasswordSecurityPage'
 
 const links = [
@@ -228,6 +229,9 @@ function App() {
           </Route>
           <Route element={<RoleRoute requiredPermission="suppliers.view" requiresCompany />}>
             <Route path="/suppliers" element={<SuppliersPage />} />
+          </Route>
+          <Route element={<RoleRoute requiredPermission="purchasing.view" requiresCompany />}>
+            <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
           </Route>
           <Route path="/security" element={<PasswordSecurityPage />} />
         </Route>

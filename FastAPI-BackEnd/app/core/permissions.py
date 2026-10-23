@@ -16,6 +16,12 @@ PERMISSION_LABELS = {
     "suppliers.create": "Create company suppliers",
     "suppliers.update": "Edit company suppliers",
     "suppliers.deactivate": "Activate or deactivate suppliers",
+    "purchasing.view": "View purchase orders",
+    "purchasing.create": "Create purchase orders",
+    "purchasing.update": "Edit draft purchase orders",
+    "purchasing.submit": "Submit purchase orders",
+    "purchasing.cancel": "Cancel purchase orders",
+    "inventory.barcode.manage": "Generate and manage finished-garment barcodes",
 }
 
 WORKER_ROLE = "WORKER"
@@ -38,6 +44,12 @@ COMPANY_ADMIN_PERMISSIONS = frozenset(
         "suppliers.create",
         "suppliers.update",
         "suppliers.deactivate",
+        "purchasing.view",
+        "purchasing.create",
+        "purchasing.update",
+        "purchasing.submit",
+        "purchasing.cancel",
+        "inventory.barcode.manage",
     }
 )
 LEGACY_INVENTORY_PERMISSIONS = frozenset(

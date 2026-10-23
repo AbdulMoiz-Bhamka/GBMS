@@ -1,4 +1,9 @@
+import base64
+import secrets
+
+import barcode
 import pyodbc
+from barcode.writer import SVGWriter
 from fastapi import HTTPException
 
 from app.db.connection import database_connection, database_cursor
@@ -83,6 +88,8 @@ def _get_company_product(cursor, company_id, product_id):
 
 
 def create_product(company_id, payload: ProductCreate):
+    if payload.product_type == "RAW_MATERIAL" and payload.selling_price is not None:
+        raise HTTPException(status_code=422, detail="Selling price is only available for finished goods.")
     with database_connection() as connection, database_cursor(connection) as cursor:
         _ensure_category(cursor, payload.category_id, company_id)
         _ensure_unit(cursor, payload.unit_id)
@@ -109,7 +116,13 @@ def update_product(company_id, product_id, payload: ProductUpdate):
     if any(values.get(key) is None for key in non_nullable if key in values):
         raise HTTPException(status_code=422, detail="Required product fields cannot be empty.")
     with database_connection() as connection, database_cursor(connection) as cursor:
-        _get_company_product(cursor, company_id, product_id)
+        existing = _get_company_product(cursor, company_id, product_id)
+        new_type = values.get("product_type", existing[3])
+        new_price = values.get("selling_price", existing[18])
+        if new_type == "RAW_MATERIAL" and new_price is not None:
+            raise HTTPException(status_code=422, detail="Selling price is only available for finished goods.")
+        if existing[19] and new_type != "FINISHED_GOOD":
+            raise HTTPException(status_code=409, detail="A barcoded finished good cannot be changed to a raw material.")
         if "category_id" in values:
             _ensure_category(cursor, values["category_id"], company_id)
         if values.get("unit_id") is not None:
@@ -132,4 +145,66 @@ def set_product_status(company_id, product_id, payload: ProductStatusUpdate):
             raise HTTPException(status_code=404, detail="Product not found.")
         row = _get_company_product(cursor, company_id, product_id)
         connection.commit()
+    return repository.serialize_product(row)
+
+
+def _barcode_svg(value):
+    rendered = barcode.get("code128", value, writer=SVGWriter()).render(
+        writer_options={
+            "module_width": 0.28,
+            "module_height": 18,
+            "quiet_zone": 4,
+            "font_size": 10,
+            "text_distance": 3,
+            "background": "white",
+            "foreground": "black",
+        }
+    )
+    return base64.b64encode(rendered).decode("ascii")
+
+
+def _serialize_barcode_product(row):
+    return {
+        "product_id": row[0], "sku": row[1], "product_name": row[2],
+        "product_type": row[3], "variant_design": row[4],
+        "variant_size": row[5], "variant_color": row[6],
+        "selling_price": row[7], "barcode_value": row[8],
+        "is_active": bool(row[9]),
+    }
+
+
+def generate_product_barcode(company_id, product_id):
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        row = repository.get_barcode_product(cursor, company_id, product_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Product not found.")
+        if row[3] != "FINISHED_GOOD":
+            raise HTTPException(status_code=422, detail="Barcodes are only available for finished goods.")
+        if not row[9]:
+            raise HTTPException(status_code=409, detail="Activate this product before generating a barcode.")
+        if row[7] is None:
+            raise HTTPException(status_code=422, detail="Set a selling price before generating a barcode.")
+        if row[8] is None:
+            value = f"GBMS{company_id:06X}{secrets.token_hex(10).upper()}"
+            try:
+                result = repository.set_product_barcode(cursor, company_id, product_id, value)
+            except pyodbc.IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="Barcode collision; retry generation.") from exc
+            if result.rowcount != 1:
+                row = repository.get_barcode_product(cursor, company_id, product_id)
+                if not row or not row[8]:
+                    raise HTTPException(status_code=409, detail="Could not assign the barcode; reload and try again.")
+            else:
+                row = repository.get_barcode_product(cursor, company_id, product_id)
+            connection.commit()
+        product = _serialize_barcode_product(row)
+    product["barcode_svg_base64"] = _barcode_svg(product["barcode_value"])
+    return product
+
+
+def lookup_product_barcode(company_id, barcode_value):
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        row = repository.find_product_by_barcode(cursor, company_id, barcode_value)
+    if not row:
+        raise HTTPException(status_code=404, detail="Barcode not found for this company.")
     return repository.serialize_product(row)

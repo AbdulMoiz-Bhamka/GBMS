@@ -489,9 +489,153 @@ WHERE NOT EXISTS
     (SELECT 1 FROM dbo.PermissionCatalog p WHERE p.PermissionCode = seed.PermissionCode);
 GO
 
+/* 3. Finished-garment variants, selling price, barcode, and purchasing. */
+IF COL_LENGTH(N'dbo.Products', N'VariantDesign') IS NULL
+    ALTER TABLE dbo.Products ADD VariantDesign NVARCHAR(100) NULL;
+GO
+IF COL_LENGTH(N'dbo.Products', N'VariantSize') IS NULL
+    ALTER TABLE dbo.Products ADD VariantSize NVARCHAR(40) NULL;
+GO
+IF COL_LENGTH(N'dbo.Products', N'VariantColor') IS NULL
+    ALTER TABLE dbo.Products ADD VariantColor NVARCHAR(50) NULL;
+GO
+IF COL_LENGTH(N'dbo.Products', N'SellingPrice') IS NULL
+    ALTER TABLE dbo.Products ADD SellingPrice DECIMAL(18,2) NULL;
+GO
+IF COL_LENGTH(N'dbo.Products', N'BarcodeValue') IS NULL
+    ALTER TABLE dbo.Products ADD BarcodeValue NVARCHAR(64) NULL;
 GO
 
--- 3. Verify setup without displaying personal information or password hashes.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_Products_SellingPrice_NonNegative')
+    ALTER TABLE dbo.Products ADD CONSTRAINT CK_Products_SellingPrice_NonNegative
+        CHECK (SellingPrice IS NULL OR SellingPrice >= 0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.Products') AND name = N'UQ_Products_BarcodeValue')
+    CREATE UNIQUE INDEX UQ_Products_BarcodeValue ON dbo.Products(BarcodeValue)
+        WHERE BarcodeValue IS NOT NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.Products') AND name = N'UQ_Products_Company_ProductID')
+    CREATE UNIQUE INDEX UQ_Products_Company_ProductID ON dbo.Products(CompanyID, ProductID);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrderNumberSequence'))
+    CREATE SEQUENCE dbo.PurchaseOrderNumberSequence AS BIGINT START WITH 1 INCREMENT BY 1 NO CYCLE;
+GO
+
+IF OBJECT_ID(N'dbo.PurchaseOrders', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PurchaseOrders
+    (
+        PurchaseOrderID INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseOrders PRIMARY KEY,
+        PurchaseOrderNumber NVARCHAR(32) NOT NULL,
+        CompanyID INT NOT NULL,
+        SupplierID INT NOT NULL,
+        OrderDate DATE NOT NULL,
+        ExpectedDeliveryDate DATE NULL,
+        Status NVARCHAR(24) NOT NULL CONSTRAINT DF_PurchaseOrders_Status DEFAULT N'DRAFT',
+        Subtotal DECIMAL(19,2) NOT NULL,
+        TotalAmount DECIMAL(19,2) NOT NULL,
+        Notes NVARCHAR(1000) NULL,
+        CreatedByUserID INT NOT NULL,
+        CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_PurchaseOrders_CreatedAt DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_PurchaseOrders_UpdatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_PurchaseOrders_Companies FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID),
+        CONSTRAINT FK_PurchaseOrders_Suppliers FOREIGN KEY (CompanyID, SupplierID) REFERENCES dbo.Suppliers(CompanyID, SupplierID),
+        CONSTRAINT FK_PurchaseOrders_CreatedBy FOREIGN KEY (CreatedByUserID) REFERENCES dbo.Users(UserID),
+        CONSTRAINT CK_PurchaseOrders_Status CHECK (Status IN (N'DRAFT', N'SUBMITTED', N'PARTIALLY_RECEIVED', N'COMPLETED', N'CANCELLED')),
+        CONSTRAINT CK_PurchaseOrders_Amounts CHECK (Subtotal >= 0 AND TotalAmount >= 0 AND Subtotal = TotalAmount),
+        CONSTRAINT CK_PurchaseOrders_DeliveryDate CHECK (ExpectedDeliveryDate IS NULL OR ExpectedDeliveryDate >= OrderDate)
+    );
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrders') AND name = N'UQ_PurchaseOrders_Number')
+    CREATE UNIQUE INDEX UQ_PurchaseOrders_Number ON dbo.PurchaseOrders(PurchaseOrderNumber);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrders') AND name = N'UQ_PurchaseOrders_Company_OrderID')
+    CREATE UNIQUE INDEX UQ_PurchaseOrders_Company_OrderID ON dbo.PurchaseOrders(CompanyID, PurchaseOrderID);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrders') AND name = N'IX_PurchaseOrders_Company_Date')
+    CREATE INDEX IX_PurchaseOrders_Company_Date ON dbo.PurchaseOrders(CompanyID, OrderDate DESC, PurchaseOrderID DESC);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrders') AND name = N'IX_PurchaseOrders_Company_Supplier_Status')
+    CREATE INDEX IX_PurchaseOrders_Company_Supplier_Status ON dbo.PurchaseOrders(CompanyID, SupplierID, Status);
+GO
+
+IF OBJECT_ID(N'dbo.PurchaseOrderItems', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PurchaseOrderItems
+    (
+        PurchaseOrderItemID INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseOrderItems PRIMARY KEY,
+        CompanyID INT NOT NULL,
+        PurchaseOrderID INT NOT NULL,
+        ProductID INT NOT NULL,
+        SKU NVARCHAR(60) NOT NULL,
+        ProductName NVARCHAR(180) NOT NULL,
+        VariantDesign NVARCHAR(100) NULL,
+        VariantSize NVARCHAR(40) NULL,
+        VariantColor NVARCHAR(50) NULL,
+        UnitCode NVARCHAR(16) NOT NULL,
+        Quantity DECIMAL(18,3) NOT NULL,
+        UnitCost DECIMAL(18,2) NOT NULL,
+        LineTotal DECIMAL(19,2) NOT NULL,
+        CreatedAt DATETIME2(0) NOT NULL CONSTRAINT DF_PurchaseOrderItems_CreatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_PurchaseOrderItems_Order FOREIGN KEY (CompanyID, PurchaseOrderID) REFERENCES dbo.PurchaseOrders(CompanyID, PurchaseOrderID),
+        CONSTRAINT FK_PurchaseOrderItems_Product FOREIGN KEY (CompanyID, ProductID) REFERENCES dbo.Products(CompanyID, ProductID),
+        CONSTRAINT CK_PurchaseOrderItems_Quantity CHECK (Quantity > 0),
+        CONSTRAINT CK_PurchaseOrderItems_Cost CHECK (UnitCost >= 0),
+        CONSTRAINT CK_PurchaseOrderItems_Total CHECK (LineTotal >= 0)
+    );
+END;
+GO
+IF COL_LENGTH(N'dbo.PurchaseOrderItems', N'VariantDesign') IS NULL
+    ALTER TABLE dbo.PurchaseOrderItems ADD VariantDesign NVARCHAR(100) NULL;
+GO
+IF COL_LENGTH(N'dbo.PurchaseOrderItems', N'VariantSize') IS NULL
+    ALTER TABLE dbo.PurchaseOrderItems ADD VariantSize NVARCHAR(40) NULL;
+GO
+IF COL_LENGTH(N'dbo.PurchaseOrderItems', N'VariantColor') IS NULL
+    ALTER TABLE dbo.PurchaseOrderItems ADD VariantColor NVARCHAR(50) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrderItems') AND name = N'IX_PurchaseOrderItems_Order')
+    CREATE INDEX IX_PurchaseOrderItems_Order ON dbo.PurchaseOrderItems(CompanyID, PurchaseOrderID, PurchaseOrderItemID);
+GO
+
+IF OBJECT_ID(N'dbo.PurchaseOrderStatusHistory', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PurchaseOrderStatusHistory
+    (
+        PurchaseOrderStatusHistoryID BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_PurchaseOrderStatusHistory PRIMARY KEY,
+        CompanyID INT NOT NULL,
+        PurchaseOrderID INT NOT NULL,
+        Status NVARCHAR(24) NOT NULL,
+        ChangedByUserID INT NOT NULL,
+        Note NVARCHAR(500) NULL,
+        ChangedAt DATETIME2(0) NOT NULL CONSTRAINT DF_PurchaseOrderStatusHistory_ChangedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT FK_PurchaseOrderStatusHistory_Order FOREIGN KEY (CompanyID, PurchaseOrderID) REFERENCES dbo.PurchaseOrders(CompanyID, PurchaseOrderID),
+        CONSTRAINT FK_PurchaseOrderStatusHistory_User FOREIGN KEY (ChangedByUserID) REFERENCES dbo.Users(UserID)
+    );
+END;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrderStatusHistory') AND name = N'IX_PurchaseOrderStatusHistory_Order')
+    CREATE INDEX IX_PurchaseOrderStatusHistory_Order ON dbo.PurchaseOrderStatusHistory(CompanyID, PurchaseOrderID, ChangedAt);
+GO
+
+INSERT INTO dbo.PermissionCatalog (PermissionCode, PermissionName)
+SELECT seed.PermissionCode, seed.PermissionName
+FROM (VALUES
+    (N'purchasing.view', N'View purchase orders'),
+    (N'purchasing.create', N'Create purchase orders'),
+    (N'purchasing.update', N'Edit draft purchase orders'),
+    (N'purchasing.submit', N'Submit purchase orders'),
+    (N'purchasing.cancel', N'Cancel purchase orders'),
+    (N'inventory.barcode.manage', N'Generate and manage finished-garment barcodes')
+) AS seed(PermissionCode, PermissionName)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.PermissionCatalog p WHERE p.PermissionCode = seed.PermissionCode);
+GO
+
+GO
+
+-- 4. Verify setup without displaying personal information or password hashes.
 USE [GBMS_Database];
 GO
 SELECT N'Companies' AS TableName, COUNT_BIG(*) AS RecordCount FROM dbo.Companies
@@ -506,7 +650,13 @@ SELECT N'Products', COUNT_BIG(*) FROM dbo.Products
 UNION ALL
 SELECT N'Suppliers', COUNT_BIG(*) FROM dbo.Suppliers;
 GO
+SELECT N'PurchaseOrders', COUNT_BIG(*) FROM dbo.PurchaseOrders
+UNION ALL
+SELECT N'PurchaseOrderItems', COUNT_BIG(*) FROM dbo.PurchaseOrderItems;
+GO
 SELECT RoleName, Description FROM dbo.Roles ORDER BY RoleID;
 GO
 SELECT PermissionCode, PermissionName FROM dbo.PermissionCatalog ORDER BY PermissionCode;
 GO
+
+

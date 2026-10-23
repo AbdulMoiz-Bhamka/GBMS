@@ -26,6 +26,10 @@ class ProductCreate(BaseModel):
     unit_id: int = Field(gt=0)
     category_id: int | None = Field(default=None, gt=0)
     description: str | None = Field(default=None, max_length=1000)
+    variant_design: str | None = Field(default=None, max_length=100)
+    variant_size: str | None = Field(default=None, max_length=40)
+    variant_color: str | None = Field(default=None, max_length=50)
+    selling_price: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
     quantity_on_hand: Decimal = Field(default=Decimal("0"), ge=0, max_digits=18, decimal_places=3)
     reorder_level: Decimal = Field(default=Decimal("0"), ge=0, max_digits=18, decimal_places=3)
 
@@ -39,6 +43,11 @@ class ProductCreate(BaseModel):
     def sku_normalized(cls, value):
         return value.upper()
 
+    @field_validator("variant_design", "variant_size", "variant_color")
+    @classmethod
+    def normalize_variant_text(cls, value):
+        return value.strip() or None if value is not None else None
+
 
 class ProductUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
@@ -48,6 +57,10 @@ class ProductUpdate(BaseModel):
     unit_id: int | None = Field(default=None, gt=0)
     category_id: int | None = Field(default=None, gt=0)
     description: str | None = Field(default=None, max_length=1000)
+    variant_design: str | None = Field(default=None, max_length=100)
+    variant_size: str | None = Field(default=None, max_length=40)
+    variant_color: str | None = Field(default=None, max_length=50)
+    selling_price: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
     quantity_on_hand: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=3)
     reorder_level: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=3)
 
@@ -60,6 +73,11 @@ class ProductUpdate(BaseModel):
     @classmethod
     def sku_normalized(cls, value):
         return value.upper() if value is not None else value
+
+    @field_validator("variant_design", "variant_size", "variant_color")
+    @classmethod
+    def normalize_variant_text(cls, value):
+        return value.strip() or None if value is not None else None
 
 
 class ProductStatusUpdate(BaseModel):

@@ -68,3 +68,19 @@ def update_product_status(
     user=Depends(require_company_permission("inventory.update")),
 ):
     return service.set_product_status(user["company_id"], product_id, payload)
+
+
+@router.post("/products/{product_id}/barcode")
+def generate_product_barcode(
+    product_id: int = Path(gt=0),
+    user=Depends(require_company_permission("inventory.barcode.manage")),
+):
+    return service.generate_product_barcode(user["company_id"], product_id)
+
+
+@router.get("/barcodes/{barcode_value}")
+def lookup_barcode(
+    barcode_value: str = Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),
+    user=Depends(require_company_permission("inventory.view")),
+):
+    return service.lookup_product_barcode(user["company_id"], barcode_value)

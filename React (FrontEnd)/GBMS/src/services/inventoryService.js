@@ -19,4 +19,6 @@ export const inventoryService = {
   createProduct: (payload) => apiRequest('/api/v1/inventory/products', { method: 'POST', body: JSON.stringify(payload) }),
   updateProduct: (productId, payload) => apiRequest(`/api/v1/inventory/products/${productId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   setProductStatus: (productId, is_active) => apiRequest(`/api/v1/inventory/products/${productId}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
+  generateBarcode: (productId) => apiRequest(`/api/v1/inventory/products/${productId}/barcode`, { method: 'POST' }),
+  lookupBarcode: (value) => apiRequest(`/api/v1/inventory/barcodes/${encodeURIComponent(value)}`),
 }
