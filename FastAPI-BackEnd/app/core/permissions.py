@@ -62,10 +62,11 @@ def effective_permissions(role_name, configured, assigned=()):
         return list(ALL_PERMISSIONS)
     if role_name == WORKER_ROLE:
         return ["dashboard.view"]
-    if role_name == "COMPANY_ADMIN" and not configured:
-        return sorted(COMPANY_ADMIN_PERMISSIONS)
     if role_name == "COMPANY_ADMIN":
-        return sorted({"dashboard.view", "dashboard.company_overview", *assigned})
+        # A company's primary administrator is its owner-level account. Keep
+        # its access stable even if an older account was initialized with an
+        # empty custom-permissions flag. Other company roles remain granular.
+        return sorted(COMPANY_ADMIN_PERMISSIONS)
     if not configured and role_name in COMPANY_USER_ROLES:
         return sorted(LEGACY_INVENTORY_PERMISSIONS)
     return sorted({"dashboard.view", *assigned})

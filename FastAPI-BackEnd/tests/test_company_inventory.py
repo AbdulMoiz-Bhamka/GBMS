@@ -158,6 +158,13 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         self.assertTrue(has_permission({"role_name": "INVENTORY_USER", "permissions": selected}, "inventory.view"))
         self.assertFalse(has_permission({"role_name": "INVENTORY_USER", "permissions": selected}, "users.create"))
         admin_permissions = effective_permissions("COMPANY_ADMIN", False)
+        self.assertEqual(
+            effective_permissions("COMPANY_ADMIN", True, []), admin_permissions
+        )
+        self.assertEqual(
+            effective_permissions("COMPANY_ADMIN", True, ["inventory.view"]),
+            admin_permissions,
+        )
         self.assertTrue(
             has_permission(
                 {"role_name": "COMPANY_ADMIN", "permissions": admin_permissions},
@@ -187,7 +194,7 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         self.assertEqual(response["role_name"], "COMPANY_ADMIN")
         self.assertTrue(connection.committed)
 
-    def test_explicit_empty_admin_permissions_remain_restricted(self):
+    def test_company_admin_uses_full_role_defaults_even_with_old_empty_configuration(self):
         payload = CompanyUserCreate(
             username="limited_admin",
             full_name="Limited Admin",
@@ -195,7 +202,7 @@ class CompanyInventoryValidationTests(unittest.TestCase):
             password="a-secure-test-password",
             permission_codes=[],
         )
-        cursor = FakeUserCursor(role_name="COMPANY_ADMIN", permissions_configured=1)
+        cursor = FakeUserCursor(role_name="COMPANY_ADMIN", permissions_configured=0)
         connection = FakeUserConnection(cursor)
         with patch("app.db.connection.get_connection", return_value=connection):
             response = create_company_user(
@@ -204,11 +211,25 @@ class CompanyInventoryValidationTests(unittest.TestCase):
                 payload,
             )
 
-        self.assertEqual(cursor.insert_params[-1], 1)
-        self.assertEqual(
-            response["permission_codes"],
-            ["dashboard.company_overview", "dashboard.view"],
+        self.assertEqual(cursor.insert_params[-1], 0)
+        self.assertEqual(set(response["permission_codes"]), set(COMPANY_ADMIN_PERMISSIONS))
+        self.assertTrue(connection.committed)
+
+    def test_company_admin_cannot_be_created_with_a_partial_permission_list(self):
+        payload = CompanyUserCreate(
+            username="limited_admin",
+            full_name="Limited Admin",
+            email="limited@new-company.example",
+            password="a-secure-test-password",
+            permission_codes=["inventory.view"],
         )
+        with self.assertRaises(HTTPException) as error:
+            create_company_user(
+                {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None},
+                41,
+                payload,
+            )
+        self.assertEqual(error.exception.status_code, 422)
 
     def test_company_user_operations_reject_a_different_tenant(self):
         actor = {"user_id": 20, "role_name": "COMPANY_ADMIN", "company_id": 8}

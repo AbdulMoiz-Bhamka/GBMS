@@ -14,8 +14,8 @@ class CompanyUserCreate(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=12, max_length=128)
     role_name: Literal["COMPANY_ADMIN", "SUB_ADMIN", "INVENTORY_USER", "WORKER"] = "COMPANY_ADMIN"
-    # None means the caller is using the role's configured defaults. An explicit
-    # empty list is a deliberate dashboard-only permission assignment.
+    # None means no per-user grants were supplied. Company Admin access is
+    # always role-based; for other roles, an explicit empty list is restrictive.
     permission_codes: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("full_name")

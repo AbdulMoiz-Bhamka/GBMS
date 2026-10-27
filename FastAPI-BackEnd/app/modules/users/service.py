@@ -213,13 +213,16 @@ def create_company_user(actor, company_id, payload):
         _require(actor, "users.assign_role")
         if payload.role_name not in COMPANY_USER_ROLES:
             raise HTTPException(status_code=403, detail="You cannot assign that role.")
+    if payload.role_name == "COMPANY_ADMIN" and payload.permission_codes:
+        raise HTTPException(
+            status_code=422,
+            detail="Company Admin access is fixed to the full company role defaults. Use another role for limited access.",
+        )
     permissions = _validate_grant(actor, payload.permission_codes)
-    # The platform creates the first COMPANY_ADMIN without a permission editor.
-    # Leave that account on the role defaults defined in core.permissions. An
-    # explicit [] remains a deliberate restricted assignment.
-    permissions_configured = not (
-        payload.role_name == "COMPANY_ADMIN" and payload.permission_codes is None
-    )
+    # Company Admin permissions come from the role defaults, not user grants.
+    permissions_configured = payload.role_name != "COMPANY_ADMIN"
+    if payload.role_name == "COMPANY_ADMIN":
+        permissions = set()
     if payload.role_name == "WORKER" and permissions:
         raise HTTPException(
             status_code=422,
