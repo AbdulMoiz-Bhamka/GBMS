@@ -20,5 +20,6 @@ export const inventoryService = {
   updateProduct: (productId, payload) => apiRequest(`/api/v1/inventory/products/${productId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   setProductStatus: (productId, is_active) => apiRequest(`/api/v1/inventory/products/${productId}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
   generateBarcode: (productId) => apiRequest(`/api/v1/inventory/products/${productId}/barcode`, { method: 'POST' }),
+  barcodeLabel: (productId) => apiRequest(`/api/v1/inventory/products/${productId}/barcode`),
   lookupBarcode: (value) => apiRequest(`/api/v1/inventory/barcodes/${encodeURIComponent(value)}`),
 }

@@ -78,6 +78,14 @@ def generate_product_barcode(
     return service.generate_product_barcode(user["company_id"], product_id)
 
 
+@router.get("/products/{product_id}/barcode")
+def get_product_barcode_label(
+    product_id: int = Path(gt=0),
+    user=Depends(require_company_permission("inventory.barcode.manage")),
+):
+    return service.get_product_barcode_label(user["company_id"], product_id)
+
+
 @router.get("/barcodes/{barcode_value}")
 def lookup_barcode(
     barcode_value: str = Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),

@@ -10,6 +10,53 @@ const emptyProduct = {
   variant_color: '', selling_price: '',
 }
 
+function BarcodeLabelDialog({ label, onClose }) {
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 p-4"
+      role="presentation"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
+    >
+      <section role="dialog" aria-modal="true" aria-labelledby="barcode-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="no-print flex items-start justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-sky-700">Finished-garment label</p>
+            <h2 id="barcode-title" className="mt-1 text-xl font-semibold">{label.product_name}</h2>
+          </div>
+          <button type="button" aria-label="Close barcode label" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+        </div>
+        <div id="gbms-barcode-label" className="garment-label mt-5 border border-slate-200 p-5">
+          <p className="text-center text-sm font-bold">{label.product_name}</p>
+          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <div><dt className="font-semibold text-slate-500">SKU</dt><dd className="font-mono">{label.sku}</dd></div>
+            <div><dt className="font-semibold text-slate-500">Design</dt><dd>{label.variant_design || '—'}</dd></div>
+            <div><dt className="font-semibold text-slate-500">Size</dt><dd>{label.variant_size || '—'}</dd></div>
+            <div><dt className="font-semibold text-slate-500">Colour</dt><dd>{label.variant_color || '—'}</dd></div>
+            <div className="col-span-2">
+              <dt className="font-semibold text-slate-500">Selling price</dt>
+              <dd className="font-semibold">{label.selling_price == null ? 'Not set' : `PKR ${Number(label.selling_price).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</dd>
+            </div>
+          </dl>
+          <img className="mx-auto mt-3 max-h-12 max-w-full" alt={`Code 128 barcode for ${label.sku}`} src={`data:image/svg+xml;base64,${label.barcode_svg_base64}`} />
+          <p className="mt-1 text-center font-mono text-[9px] tracking-wider">{label.barcode_value}</p>
+        </div>
+        <div className="no-print mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Close</button>
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white"><Printer size={16} /> Print Label</button>
+        </div>
+        <style>{`@page { size: 80mm 50mm; margin: 0; }
+          @media print {
+            body * { visibility: hidden !important; }
+            #gbms-barcode-label, #gbms-barcode-label * { visibility: visible !important; }
+            #gbms-barcode-label { position: fixed; inset: 0 auto auto 0; box-sizing: border-box; width: 80mm; height: 50mm; margin: 0 !important; padding: 4mm !important; border: 0 !important; box-shadow: none !important; overflow: hidden; }
+            .no-print { display: none !important; }
+          }
+        `}</style>
+      </section>
+    </div>
+  )
+}
+
 export default function InventoryPage() {
   const { user } = useAuth()
   const canCreate = user?.permissions?.includes('inventory.create')
@@ -158,19 +205,22 @@ export default function InventoryPage() {
     }
   }
 
-  const createOrShowBarcode = async (product) => {
+  const requestBarcodeLabel = async (product, request, refreshProducts = false) => {
     setBarcodeLoadingId(product.product_id)
     setError('')
     try {
-      const label = await inventoryService.generateBarcode(product.product_id)
+      const label = await request(product.product_id)
       setBarcodeLabel(label)
-      await loadProducts()
+      if (refreshProducts) await loadProducts()
     } catch (failure) {
       setError(failure.message || 'Could not load the barcode label.')
     } finally {
       setBarcodeLoadingId(null)
     }
   }
+
+  const generateBarcode = (product) => requestBarcodeLabel(product, inventoryService.generateBarcode, true)
+  const printBarcodeLabel = (product) => requestBarcodeLabel(product, inventoryService.barcodeLabel)
 
   const toggleStatus = async (product) => {
     const isActive = !product.is_active
@@ -270,7 +320,7 @@ export default function InventoryPage() {
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3 font-semibold">SKU</th><th className="px-5 py-3 font-semibold">Product / variant</th><th className="px-5 py-3 font-semibold">Category</th><th className="px-5 py-3 font-semibold">Type</th><th className="px-5 py-3 font-semibold">Unit</th><th className="px-5 py-3 font-semibold">On hand</th><th className="px-5 py-3 font-semibold">Selling price</th><th className="px-5 py-3 font-semibold">Barcode</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3 text-right font-semibold">Actions</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {products.map((product) => <tr key={product.product_id}>
-                <td className="px-5 py-4 font-mono text-xs text-slate-600">{product.sku}</td><td className="px-5 py-4 font-semibold text-slate-800">{product.product_name}<p className="mt-1 text-xs font-normal text-slate-500">{[product.variant_design, product.variant_size, product.variant_color].filter(Boolean).join(' · ') || 'No variant details'}</p></td><td className="px-5 py-4 text-slate-600">{product.category_name || '—'}</td><td className="px-5 py-4 text-slate-600">{product.product_type === 'RAW_MATERIAL' ? 'Raw material' : 'Finished good'}</td><td className="px-5 py-4 text-slate-600">{product.unit_name} ({product.unit_code})</td><td className="px-5 py-4 font-medium text-slate-700">{product.quantity_on_hand} {product.unit_code}</td><td className="px-5 py-4 text-slate-600">{product.selling_price == null ? '—' : `PKR ${Number(product.selling_price).toLocaleString()}`}</td><td className="px-5 py-4 font-mono text-xs text-slate-600">{product.barcode_value ? 'Generated' : product.product_type === 'FINISHED_GOOD' ? 'Not generated' : '—'}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${product.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{product.is_active ? 'ACTIVE' : 'INACTIVE'}</span></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{canUpdate && <><button type="button" onClick={() => openEdit(product.product_id)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Pencil size={14} /> Edit</button><button type="button" onClick={() => toggleStatus(product)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Power size={14} />{product.is_active ? 'Deactivate' : 'Activate'}</button></>}{canManageBarcodes && product.product_type === 'FINISHED_GOOD' && <button type="button" onClick={() => createOrShowBarcode(product)} disabled={barcodeLoadingId === product.product_id} className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-50 disabled:opacity-50">{product.barcode_value ? <Printer size={14} /> : <Barcode size={14} />}{barcodeLoadingId === product.product_id ? 'Loading…' : product.barcode_value ? 'Label' : 'Generate'}</button>}</div></td>
+                <td className="px-5 py-4 font-mono text-xs text-slate-600">{product.sku}</td><td className="px-5 py-4 font-semibold text-slate-800">{product.product_name}<p className="mt-1 text-xs font-normal text-slate-500">{[product.variant_design, product.variant_size, product.variant_color].filter(Boolean).join(' · ') || 'No variant details'}</p></td><td className="px-5 py-4 text-slate-600">{product.category_name || '—'}</td><td className="px-5 py-4 text-slate-600">{product.product_type === 'RAW_MATERIAL' ? 'Raw material' : 'Finished good'}</td><td className="px-5 py-4 text-slate-600">{product.unit_name} ({product.unit_code})</td><td className="px-5 py-4 font-medium text-slate-700">{product.quantity_on_hand} {product.unit_code}</td><td className="px-5 py-4 text-slate-600">{product.selling_price == null ? '—' : `PKR ${Number(product.selling_price).toLocaleString()}`}</td><td className="px-5 py-4 font-mono text-xs text-slate-600">{product.barcode_value ? 'Generated' : product.product_type === 'FINISHED_GOOD' ? 'Not generated' : '—'}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${product.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{product.is_active ? 'ACTIVE' : 'INACTIVE'}</span></td><td className="px-5 py-4"><div className="flex justify-end gap-2">{canUpdate && <><button type="button" onClick={() => openEdit(product.product_id)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Pencil size={14} /> Edit</button><button type="button" onClick={() => toggleStatus(product)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50"><Power size={14} />{product.is_active ? 'Deactivate' : 'Activate'}</button></>}{canManageBarcodes && product.product_type === 'FINISHED_GOOD' && (product.barcode_value ? <button type="button" onClick={() => printBarcodeLabel(product)} disabled={barcodeLoadingId === product.product_id} className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-50 disabled:opacity-50"><Printer size={14} />{barcodeLoadingId === product.product_id ? 'Preparing…' : 'Print Label'}</button> : <button type="button" onClick={() => generateBarcode(product)} disabled={barcodeLoadingId === product.product_id || !product.is_active} title={!product.is_active ? 'Activate this product before generating its barcode.' : undefined} className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 px-2.5 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-50 disabled:opacity-50"><Barcode size={14} />{barcodeLoadingId === product.product_id ? 'Generating…' : 'Generate Barcode'}</button>)}</div></td>
               </tr>)}
               {!loading && products.length === 0 && <tr><td colSpan={10} className="px-5 py-14 text-center"><Package className="mx-auto text-slate-300" size={28} /><p className="mt-3 font-medium text-slate-700">No products yet</p><p className="mt-1 text-sm text-slate-500">Add a product to start this company’s catalogue.</p></td></tr>}
               {loading && <tr><td colSpan={10} className="px-5 py-12 text-center text-sm text-slate-500" role="status">Loading products…</td></tr>}
@@ -279,7 +329,7 @@ export default function InventoryPage() {
         </div>
         <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:px-5"><span>{total === 0 ? '0 products' : `${offset + 1}–${Math.min(offset + products.length, total)} of ${total}`}</span><div className="flex gap-2"><button type="button" aria-label="Previous page" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - limit))} className="rounded-lg border border-slate-200 p-2 disabled:opacity-40"><ChevronLeft size={16} /></button><button type="button" aria-label="Next page" disabled={offset + limit >= total || loading} onClick={() => setOffset(offset + limit)} className="rounded-lg border border-slate-200 p-2 disabled:opacity-40"><ChevronRight size={16} /></button></div></div>
       </div>
-      {barcodeLabel && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBarcodeLabel(null) }}><section role="dialog" aria-modal="true" aria-labelledby="barcode-title" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-wider text-sky-700">Finished-garment label</p><h2 id="barcode-title" className="mt-1 text-xl font-semibold">{barcodeLabel.product_name}</h2></div><button type="button" aria-label="Close barcode label" onClick={() => setBarcodeLabel(null)} className="no-print rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div><div id="gbms-barcode-label" className="mt-5 border border-slate-200 p-5 text-center"><p className="font-semibold">{barcodeLabel.product_name}</p><p className="mt-1 text-xs text-slate-600">SKU {barcodeLabel.sku}{[barcodeLabel.variant_design, barcodeLabel.variant_size, barcodeLabel.variant_color].filter(Boolean).length ? ` · ${[barcodeLabel.variant_design, barcodeLabel.variant_size, barcodeLabel.variant_color].filter(Boolean).join(' · ')}` : ''}</p><img className="mx-auto mt-4 max-w-full" alt={`Code 128 barcode ${barcodeLabel.barcode_value}`} src={`data:image/svg+xml;base64,${barcodeLabel.barcode_svg_base64}`} /><p className="mt-1 font-mono text-xs tracking-wider">{barcodeLabel.barcode_value}</p><p className="mt-2 text-sm font-semibold">PKR {Number(barcodeLabel.selling_price).toLocaleString()}</p></div><div className="no-print mt-5 flex justify-end gap-2"><button type="button" onClick={() => setBarcodeLabel(null)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Close</button><button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white"><Printer size={16} /> Print label</button></div><style>{'@media print { body * { visibility: hidden !important; } #gbms-barcode-label, #gbms-barcode-label * { visibility: visible !important; } #gbms-barcode-label { position: absolute; left: 0; top: 0; width: 80mm; border: 0 !important; box-shadow: none !important; } .no-print { display: none !important; } }'}</style></section></div>}
+      {barcodeLabel && <BarcodeLabelDialog label={barcodeLabel} onClose={() => setBarcodeLabel(null)} />}
     </section>
   )
 }
