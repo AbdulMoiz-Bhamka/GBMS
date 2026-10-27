@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Barcode, ChevronLeft, ChevronRight, Package, Pencil, Plus, Power, Printer, X } from 'lucide-react'
 import { inventoryService } from '../../services/inventoryService'
 import { useAuth } from '../../auth/useAuth'
+import { SKU_PATTERN } from './skuValidation'
 
 const emptyProduct = {
   sku: '', product_name: '', product_type: 'RAW_MATERIAL', category_id: '', quantity_on_hand: '0',
@@ -285,7 +286,7 @@ export default function InventoryPage() {
           <div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="font-semibold">{editingId ? 'Edit product' : 'Add product'}</h2><p className="mt-1 text-sm text-slate-500">Product records are saved to your assigned company.</p></div><button type="button" aria-label="Close product form" onClick={() => setFormOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div>
           <form onSubmit={saveProduct}>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="text-sm font-medium text-slate-700">SKU *<input required maxLength={60} pattern="[A-Za-z0-9][A-Za-z0-9._/-]{0,59}" value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono font-normal outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /></label>
+            <label className="text-sm font-medium text-slate-700">SKU *<input required maxLength={60} pattern={SKU_PATTERN} value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono font-normal outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /></label>
             <label className="text-sm font-medium text-slate-700">Product name *<input required maxLength={180} value={form.product_name} onChange={(event) => setForm({ ...form, product_name: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /></label>
             <label className="text-sm font-medium text-slate-700">Product type *<select required value={form.product_type} onChange={(event) => setForm({ ...form, product_type: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal outline-none focus:border-sky-500"><option value="RAW_MATERIAL">Raw material</option><option value="FINISHED_GOOD">Finished good</option></select></label>
             {form.product_type === 'FINISHED_GOOD' && <>

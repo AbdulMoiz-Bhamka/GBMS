@@ -14,7 +14,9 @@ class CompanyUserCreate(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=12, max_length=128)
     role_name: Literal["COMPANY_ADMIN", "SUB_ADMIN", "INVENTORY_USER", "WORKER"] = "COMPANY_ADMIN"
-    permission_codes: list[str] = Field(default_factory=list, max_length=20)
+    # None means the caller is using the role's configured defaults. An explicit
+    # empty list is a deliberate dashboard-only permission assignment.
+    permission_codes: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("full_name")
     @classmethod
@@ -32,7 +34,7 @@ class CompanyUserCreate(BaseModel):
     @field_validator("permission_codes")
     @classmethod
     def permission_codes_unique(cls, value):
-        if len(value) != len(set(value)):
+        if value is not None and len(value) != len(set(value)):
             raise ValueError("Do not select the same permission more than once.")
         return value
 

@@ -11,7 +11,7 @@ import pyodbc
 from app.core.config import ALLOWED_ORIGINS
 from app.dependencies.permissions import require_company_user, require_super_admin
 from app.dependencies.permissions import has_permission
-from app.core.permissions import effective_permissions
+from app.core.permissions import COMPANY_ADMIN_PERMISSIONS, effective_permissions
 from app.modules.companies.schemas import CompanyCreate
 from app.modules.inventory.repository import category_available
 from app.modules.inventory.service import _ensure_category
@@ -42,7 +42,8 @@ class FakeCategoryCursor:
 
 
 class FakeUserCursor:
-    def __init__(self, *, company_status="ACTIVE", role_id=2, insert_error=None):
+    def __init__(self, *, company_status="ACTIVE", role_id=2, insert_error=None,
+                 role_name="INVENTORY_USER", permissions_configured=1):
         self.company_status = company_status
         self.role_id = role_id
         self.insert_error = insert_error
@@ -50,6 +51,8 @@ class FakeUserCursor:
         self.permission_rows = []
         self.insert_sql = None
         self.insert_params = None
+        self.role_name = role_name
+        self.permissions_configured = permissions_configured
 
     def execute(self, sql, *params):
         normalized = " ".join(sql.split()).upper()
@@ -66,7 +69,7 @@ class FakeUserCursor:
                 raise AssertionError("SCOPE_IDENTITY must run in the INSERT batch.")
             self.result = (77,)
         elif "FROM DBO.USERS AS U JOIN DBO.ROLES AS R" in normalized and "WHERE U.COMPANYID = ? AND U.USERID = ?" in normalized:
-            self.result = (77, "aman365", "Aman", "aman@example.com", "INVENTORY_USER", "ACTIVE", 1, "2026-10-13", 1)
+            self.result = (77, "aman365", "Aman", "aman@example.com", self.role_name, "ACTIVE", 1, "2026-10-13", self.permissions_configured)
         elif "FROM DBO.USERPERMISSIONS" in normalized:
             self.rows = list(self.permission_rows)
             self.result = None
@@ -163,10 +166,62 @@ class CompanyInventoryValidationTests(unittest.TestCase):
         )
         self.assertEqual(effective_permissions("UNLISTED_ROLE", False), ["dashboard.view"])
 
+    def test_new_platform_created_company_admin_inherits_role_defaults(self):
+        payload = CompanyUserCreate(
+            username="new_admin",
+            full_name="New Company Admin",
+            email="admin@new-company.example",
+            password="a-secure-test-password",
+        )
+        cursor = FakeUserCursor(role_name="COMPANY_ADMIN", permissions_configured=0)
+        connection = FakeUserConnection(cursor)
+        with patch("app.db.connection.get_connection", return_value=connection):
+            response = create_company_user(
+                {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None},
+                41,
+                payload,
+            )
+
+        self.assertEqual(cursor.insert_params[-1], 0)
+        self.assertEqual(set(response["permission_codes"]), set(COMPANY_ADMIN_PERMISSIONS))
+        self.assertEqual(response["role_name"], "COMPANY_ADMIN")
+        self.assertTrue(connection.committed)
+
+    def test_explicit_empty_admin_permissions_remain_restricted(self):
+        payload = CompanyUserCreate(
+            username="limited_admin",
+            full_name="Limited Admin",
+            email="limited@new-company.example",
+            password="a-secure-test-password",
+            permission_codes=[],
+        )
+        cursor = FakeUserCursor(role_name="COMPANY_ADMIN", permissions_configured=1)
+        connection = FakeUserConnection(cursor)
+        with patch("app.db.connection.get_connection", return_value=connection):
+            response = create_company_user(
+                {"user_id": 1, "role_name": "SUPER_ADMIN", "company_id": None},
+                41,
+                payload,
+            )
+
+        self.assertEqual(cursor.insert_params[-1], 1)
+        self.assertEqual(
+            response["permission_codes"],
+            ["dashboard.company_overview", "dashboard.view"],
+        )
+
     def test_company_user_operations_reject_a_different_tenant(self):
         actor = {"user_id": 20, "role_name": "COMPANY_ADMIN", "company_id": 8}
         with self.assertRaises(HTTPException) as error:
             _company_for_actor(actor, 9)
+        self.assertEqual(error.exception.status_code, 404)
+
+    def test_company_admin_cannot_read_another_company_user_scope(self):
+        with self.assertRaises(HTTPException) as error:
+            _company_for_actor(
+                {"user_id": 22, "role_name": "COMPANY_ADMIN", "company_id": 41},
+                42,
+            )
         self.assertEqual(error.exception.status_code, 404)
 
     def test_company_admin_cannot_create_another_company_admin(self):

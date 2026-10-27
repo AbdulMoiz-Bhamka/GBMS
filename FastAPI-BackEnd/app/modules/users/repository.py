@@ -123,12 +123,14 @@ def list_user_permissions(cursor, user_id):
     ).fetchall()
 
 
-def insert_company_user(cursor, payload, role_id, company_id, password_hash):
+def insert_company_user(
+    cursor, payload, role_id, company_id, password_hash, permissions_configured=True
+):
     identity_row = cursor.execute(
         """SET NOCOUNT ON;
            INSERT INTO dbo.Users
              (Username, FullName, Email, PasswordHash, RoleID, CompanyID, PermissionsConfigured)
-           VALUES (?, ?, ?, ?, ?, ?, 1);
+           VALUES (?, ?, ?, ?, ?, ?, ?);
            SELECT CONVERT(INT, SCOPE_IDENTITY());
            SET NOCOUNT OFF;""",
         payload.username,
@@ -137,6 +139,7 @@ def insert_company_user(cursor, payload, role_id, company_id, password_hash):
         password_hash,
         role_id,
         company_id,
+        int(bool(permissions_configured)),
     ).fetchone()
     user_id = identity_row[0] if identity_row else None
     if user_id is None:

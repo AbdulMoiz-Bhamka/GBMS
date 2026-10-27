@@ -214,6 +214,12 @@ def create_company_user(actor, company_id, payload):
         if payload.role_name not in COMPANY_USER_ROLES:
             raise HTTPException(status_code=403, detail="You cannot assign that role.")
     permissions = _validate_grant(actor, payload.permission_codes)
+    # The platform creates the first COMPANY_ADMIN without a permission editor.
+    # Leave that account on the role defaults defined in core.permissions. An
+    # explicit [] remains a deliberate restricted assignment.
+    permissions_configured = not (
+        payload.role_name == "COMPANY_ADMIN" and payload.permission_codes is None
+    )
     if payload.role_name == "WORKER" and permissions:
         raise HTTPException(
             status_code=422,
@@ -239,9 +245,17 @@ def create_company_user(actor, company_id, payload):
                 )
             password_hash = password_hasher.hash(payload.password)
             user_id = repository.insert_company_user(
-                cursor, payload, role[0], company_id, password_hash
+                cursor,
+                payload,
+                role[0],
+                company_id,
+                password_hash,
+                permissions_configured=permissions_configured,
             )
-            repository.replace_user_permissions(cursor, user_id, permissions, actor["user_id"])
+            if permissions_configured:
+                repository.replace_user_permissions(
+                    cursor, user_id, permissions, actor["user_id"]
+                )
             row = repository.get_company_user(cursor, company_id, user_id)
             connection.commit()
             result = _serialize_user(cursor, row)

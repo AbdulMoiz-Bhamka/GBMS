@@ -5,12 +5,13 @@ import {
   Settings, ShoppingCart, Users, Wallet, Warehouse, X,
 } from 'lucide-react'
 import { useAuth } from '../../auth/useAuth'
+import { canSeeCompanyModule } from './navigationAccess'
 
 export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const { user } = useAuth()
   const isSuperAdmin = user?.role_name === 'SUPER_ADMIN'
   const isWorker = user?.role_name === 'WORKER'
-  const hasPermission = (code) => user?.company_id != null && user?.permissions?.includes(code)
+  const hasPermission = (code) => canSeeCompanyModule(user, code)
   const navigationGroups = [
     { title: 'OVERVIEW', items: [{ label: 'Overview', path: '/dashboard', icon: BarChart3, available: true }] },
     ...(isSuperAdmin ? [{ title: 'PLATFORM', items: [{ label: 'Companies', path: '/companies', icon: Building2, available: true }] }] : []),
