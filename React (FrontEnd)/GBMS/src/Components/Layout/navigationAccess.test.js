@@ -6,12 +6,18 @@ test('a company admin sees each implemented module granted by the backend', () =
   const user = {
     role_name: 'COMPANY_ADMIN',
     company_id: 41,
-    permissions: ['users.view', 'inventory.view', 'suppliers.view', 'purchasing.view'],
+    permissions: ['users.view', 'inventory.view', 'inventory.barcode.manage', 'suppliers.view', 'purchasing.view'],
   }
 
   assert.deepEqual(visibleCompanyModulePaths(user), [
-    '/users', '/inventory', '/suppliers', '/purchase-orders',
+    '/users', '/inventory', '/barcodes', '/suppliers', '/purchase-orders',
   ])
+})
+
+test('barcode workspace is hidden without its explicit permission', () => {
+  assert.deepEqual(visibleCompanyModulePaths({
+    role_name: 'SUB_ADMIN', company_id: 41, permissions: ['inventory.view'],
+  }), ['/inventory'])
 })
 
 test('navigation hides modules without permission and never shows tenant modules without a company', () => {

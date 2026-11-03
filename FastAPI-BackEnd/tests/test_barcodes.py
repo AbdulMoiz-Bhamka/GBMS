@@ -10,6 +10,7 @@ from app.core.permissions import COMPANY_ADMIN_PERMISSIONS, PERMISSION_LABELS
 from app.dependencies.permissions import require_company_permission
 from app.modules.inventory import repository, service
 from app.modules.inventory.schemas import ProductCreate, ProductUpdate
+from app.modules.barcodes import router as barcode_router
 
 
 class Cursor:
@@ -52,6 +53,25 @@ class BarcodeTests(unittest.TestCase):
         self.assertIn("get", paths["/api/v1/inventory/products/{product_id}/barcode"])
         self.assertIn("post", paths["/api/v1/inventory/products/{product_id}/barcode"])
         self.assertIn("/api/v1/inventory/barcodes/{barcode_value}", paths)
+        self.assertIn("/api/v1/barcodes", paths)
+        self.assertIn("/api/v1/barcodes/{product_id}/generate", paths)
+        self.assertIn("/api/v1/barcodes/{product_id}/label", paths)
+        self.assertIn("/api/v1/barcodes/lookup/{barcode_value}", paths)
+        self.assertIn("put", paths["/api/v1/barcodes/{product_id}/materials"])
+
+    def test_barcode_workspace_catalogue_filters_every_query_to_authenticated_company(self):
+        cursor = Cursor((0,))
+        with patch.object(barcode_router, "database_connection", return_value=nullcontext(Connection())), \
+             patch.object(barcode_router, "database_cursor", return_value=nullcontext(cursor)):
+            result = barcode_router.list_finished_goods(
+                search="tee", category_id=None, size=None, color=None, status="ALL",
+                limit=100, offset=0, user={"company_id": 29, "permissions": ["inventory.barcode.manage"]},
+            )
+        self.assertEqual(result["total"], 0)
+        self.assertEqual(len(cursor.calls), 2)
+        for sql, params in cursor.calls:
+            self.assertIn("CompanyID = ?", sql)
+            self.assertEqual(params[0], 29)
 
     def test_code128_svg_is_generated_by_real_barcode_library(self):
         encoded = service._barcode_svg("GBMS0000010123456789ABCDEF")
@@ -67,7 +87,7 @@ class BarcodeTests(unittest.TestCase):
         with patch.object(service, "database_connection", return_value=nullcontext(connection)), \
              patch.object(service, "database_cursor", return_value=nullcontext(cursor)), \
              patch.object(service.secrets, "token_hex", return_value="ABCDEF0123456789ABCD"):
-            result = service.generate_product_barcode(1, 42)
+            result = service.generate_product_barcode(1, 42, 99)
         self.assertEqual(result["barcode_value"], "GBMS000001ABCDEF0123456789ABCD")
         self.assertEqual(result["product_id"], 42)
         self.assertTrue(result["barcode_svg_base64"])
@@ -75,7 +95,10 @@ class BarcodeTests(unittest.TestCase):
         self.assertTrue(connection.committed)
         update_sql = next(sql for sql, _ in cursor.calls if "SET BarcodeValue" in sql)
         self.assertIn("CompanyID = ?", update_sql)
+        self.assertIn("BarcodeGeneratedByUserID", update_sql)
         self.assertNotIn("QuantityOnHand", update_sql)
+        update_call = next(params for sql, params in cursor.calls if "SET BarcodeValue" in sql)
+        self.assertEqual(update_call[1], 99)
 
     def test_existing_barcode_is_reused_for_printing_without_a_write(self):
         barcode_value = "GBMS0000010123456789ABCDEF"

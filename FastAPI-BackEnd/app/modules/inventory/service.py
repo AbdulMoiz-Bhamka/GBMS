@@ -193,7 +193,7 @@ def get_product_barcode_label(company_id, product_id):
     return _barcode_label(row)
 
 
-def generate_product_barcode(company_id, product_id):
+def generate_product_barcode(company_id, product_id, user_id=None):
     with database_connection() as connection, database_cursor(connection) as cursor:
         row = repository.get_barcode_product(cursor, company_id, product_id)
         if not row:
@@ -207,7 +207,7 @@ def generate_product_barcode(company_id, product_id):
                 raise HTTPException(status_code=422, detail="Set a selling price before generating a barcode.")
             value = f"GBMS{company_id:06X}{secrets.token_hex(10).upper()}"
             try:
-                result = repository.set_product_barcode(cursor, company_id, product_id, value)
+                result = repository.set_product_barcode(cursor, company_id, product_id, value, user_id)
             except pyodbc.IntegrityError as exc:
                 raise HTTPException(status_code=409, detail="Barcode collision; retry generation.") from exc
             if result.rowcount != 1:

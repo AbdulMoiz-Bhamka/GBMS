@@ -179,13 +179,14 @@ def get_barcode_product(cursor, company_id, product_id):
     ).fetchone()
 
 
-def set_product_barcode(cursor, company_id, product_id, barcode_value):
+def set_product_barcode(cursor, company_id, product_id, barcode_value, user_id):
     return cursor.execute(
-        """UPDATE dbo.Products SET BarcodeValue = ?, UpdatedAt = SYSUTCDATETIME()
+        """UPDATE dbo.Products SET BarcodeValue = ?, BarcodeGeneratedAt = SYSUTCDATETIME(),
+                  BarcodeGeneratedByUserID = ?, UpdatedAt = SYSUTCDATETIME()
             WHERE CompanyID = ? AND ProductID = ?
               AND ProductType = N'FINISHED_GOOD' AND IsActive = 1
               AND SellingPrice IS NOT NULL AND BarcodeValue IS NULL""",
-        barcode_value, company_id, product_id,
+        barcode_value, user_id, company_id, product_id,
     )
 
 

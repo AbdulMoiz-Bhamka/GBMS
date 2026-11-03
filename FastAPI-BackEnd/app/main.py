@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import ALLOWED_ORIGINS
 from app.db.connection import database_connection, database_cursor
 from app.modules.auth.router import router as auth_router
+from app.modules.barcodes.router import router as barcodes_router
 from app.modules.companies.router import router as companies_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.inventory.router import router as inventory_router
@@ -42,5 +43,6 @@ app.include_router(companies_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
+app.include_router(barcodes_router, prefix="/api/v1")
 app.include_router(purchasing_router, prefix="/api/v1")
 app.include_router(suppliers_router, prefix="/api/v1")

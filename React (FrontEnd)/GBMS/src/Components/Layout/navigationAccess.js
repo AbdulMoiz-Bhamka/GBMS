@@ -1,6 +1,7 @@
 export const COMPANY_MODULES = [
   { path: '/users', permission: 'users.view' },
   { path: '/inventory', permission: 'inventory.view' },
+  { path: '/barcodes', permission: 'inventory.barcode.manage' },
   { path: '/suppliers', permission: 'suppliers.view' },
   { path: '/purchase-orders', permission: 'purchasing.view' },
 ]

@@ -75,7 +75,7 @@ def generate_product_barcode(
     product_id: int = Path(gt=0),
     user=Depends(require_company_permission("inventory.barcode.manage")),
 ):
-    return service.generate_product_barcode(user["company_id"], product_id)
+    return service.generate_product_barcode(user["company_id"], product_id, user["user_id"])
 
 
 @router.get("/products/{product_id}/barcode")

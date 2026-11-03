@@ -18,6 +18,7 @@ import UsersPage from './pages/Users/UsersPage'
 import SuppliersPage from './pages/Suppliers/SuppliersPage'
 import PurchaseOrdersPage from './pages/Purchasing/PurchaseOrdersPage'
 import PasswordSecurityPage from './pages/Auth/PasswordSecurityPage'
+import BarcodesPage from './pages/Barcodes/BarcodesPage'
 
 const links = [
   ['Overview', '#home'],
@@ -226,6 +227,9 @@ function App() {
           </Route>
           <Route element={<RoleRoute requiredPermission="inventory.view" requiresCompany />}>
             <Route path="/inventory" element={<InventoryPage />} />
+          </Route>
+          <Route element={<RoleRoute requiredPermission="inventory.barcode.manage" requiresCompany />}>
+            <Route path="/barcodes" element={<BarcodesPage />} />
           </Route>
           <Route element={<RoleRoute requiredPermission="suppliers.view" requiresCompany />}>
             <Route path="/suppliers" element={<SuppliersPage />} />

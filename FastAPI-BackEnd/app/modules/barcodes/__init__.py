@@ -1,0 +1,1 @@
+"""Finished garment barcode workspace."""

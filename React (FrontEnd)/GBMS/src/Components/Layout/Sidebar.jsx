@@ -1,7 +1,7 @@
 // src/Components/Layout/Sidebar.jsx
 import { NavLink } from 'react-router-dom'
 import {
-  ArrowUpRight, BarChart3, Building2, ClipboardList, Layers3,
+  ArrowUpRight, BarChart3, Barcode, Building2, ClipboardList, Layers3,
   Settings, ShoppingCart, Users, Wallet, Warehouse, X,
 } from 'lucide-react'
 import { useAuth } from '../../auth/useAuth'
@@ -15,9 +15,10 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const navigationGroups = [
     { title: 'OVERVIEW', items: [{ label: 'Overview', path: '/dashboard', icon: BarChart3, available: true }] },
     ...(isSuperAdmin ? [{ title: 'PLATFORM', items: [{ label: 'Companies', path: '/companies', icon: Building2, available: true }] }] : []),
-    ...((hasPermission('users.view') || hasPermission('inventory.view') || hasPermission('suppliers.view') || hasPermission('purchasing.view')) ? [{ title: 'COMPANY', items: [
+    ...((hasPermission('users.view') || hasPermission('inventory.view') || hasPermission('inventory.barcode.manage') || hasPermission('suppliers.view') || hasPermission('purchasing.view')) ? [{ title: 'COMPANY', items: [
       ...(hasPermission('users.view') ? [{ label: 'Team and access', path: '/users', icon: Users, available: true }] : []),
       ...(hasPermission('inventory.view') ? [{ label: 'Inventory', path: '/inventory', icon: Warehouse, available: true }] : []),
+      ...(hasPermission('inventory.barcode.manage') ? [{ label: 'Generate Barcode', path: '/barcodes', icon: Barcode, available: true }] : []),
       ...(hasPermission('suppliers.view') ? [{ label: 'Suppliers', path: '/suppliers', icon: ShoppingCart, available: true }] : []),
       ...(hasPermission('purchasing.view') ? [{ label: 'Purchase orders', path: '/purchase-orders', icon: ShoppingCart, available: true }] : []),
     ] }] : []),

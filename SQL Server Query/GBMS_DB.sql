@@ -518,6 +518,55 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.Produ
     CREATE UNIQUE INDEX UQ_Products_Company_ProductID ON dbo.Products(CompanyID, ProductID);
 GO
 
+/* 3a. Finished-garment barcode audit and company-scoped material plan.
+   Additive and safe to rerun; existing barcode values and product data are kept. */
+IF COL_LENGTH(N'dbo.Products', N'BarcodeGeneratedAt') IS NULL
+    ALTER TABLE dbo.Products ADD BarcodeGeneratedAt DATETIME2(0) NULL;
+GO
+IF COL_LENGTH(N'dbo.Products', N'BarcodeGeneratedByUserID') IS NULL
+    ALTER TABLE dbo.Products ADD BarcodeGeneratedByUserID INT NULL;
+GO
+IF NOT EXISTS (
+    SELECT 1 FROM sys.foreign_keys
+    WHERE name = N'FK_Products_BarcodeGeneratedByUser'
+      AND parent_object_id = OBJECT_ID(N'dbo.Products')
+)
+    ALTER TABLE dbo.Products ADD CONSTRAINT FK_Products_BarcodeGeneratedByUser
+        FOREIGN KEY (BarcodeGeneratedByUserID) REFERENCES dbo.Users(UserID);
+GO
+
+IF OBJECT_ID(N'dbo.FinishedGoodMaterialComponents', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.FinishedGoodMaterialComponents
+    (
+        CompanyID INT NOT NULL,
+        FinishedGoodProductID INT NOT NULL,
+        RawMaterialProductID INT NOT NULL,
+        QuantityPerFinishedUnit DECIMAL(18,6) NOT NULL,
+        CreatedAt DATETIME2(0) NOT NULL
+            CONSTRAINT DF_FGMC_CreatedAt DEFAULT SYSUTCDATETIME(),
+        CreatedByUserID INT NOT NULL,
+        CONSTRAINT PK_FinishedGoodMaterialComponents PRIMARY KEY
+            (CompanyID, FinishedGoodProductID, RawMaterialProductID),
+        CONSTRAINT FK_FGMC_FinishedProduct FOREIGN KEY (CompanyID, FinishedGoodProductID)
+            REFERENCES dbo.Products(CompanyID, ProductID),
+        CONSTRAINT FK_FGMC_RawMaterial FOREIGN KEY (CompanyID, RawMaterialProductID)
+            REFERENCES dbo.Products(CompanyID, ProductID),
+        CONSTRAINT FK_FGMC_CreatedBy FOREIGN KEY (CreatedByUserID)
+            REFERENCES dbo.Users(UserID),
+        CONSTRAINT CK_FGMC_Quantity CHECK (QuantityPerFinishedUnit > 0)
+    );
+END;
+GO
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.FinishedGoodMaterialComponents')
+      AND name = N'IX_FGMC_Company_RawMaterial'
+)
+    CREATE INDEX IX_FGMC_Company_RawMaterial
+        ON dbo.FinishedGoodMaterialComponents(CompanyID, RawMaterialProductID);
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE object_id = OBJECT_ID(N'dbo.PurchaseOrderNumberSequence'))
     CREATE SEQUENCE dbo.PurchaseOrderNumberSequence AS BIGINT START WITH 1 INCREMENT BY 1 NO CYCLE;
 GO
