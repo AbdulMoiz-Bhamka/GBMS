@@ -10,6 +10,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.barcodes.router import router as barcodes_router
 from app.modules.companies.router import router as companies_router
 from app.modules.dashboard.router import router as dashboard_router
+from app.modules.goods_receipts.router import router as goods_receipts_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.purchasing.router import router as purchasing_router
 from app.modules.suppliers.router import router as suppliers_router
@@ -43,6 +44,7 @@ app.include_router(companies_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(inventory_router, prefix="/api/v1")
+app.include_router(goods_receipts_router, prefix="/api/v1")
 app.include_router(barcodes_router, prefix="/api/v1")
 app.include_router(purchasing_router, prefix="/api/v1")
 app.include_router(suppliers_router, prefix="/api/v1")

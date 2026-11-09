@@ -1,3 +1,4 @@
+// src/pages/Barcodes/BarcodesPage.jsx
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Barcode, Camera, LoaderCircle, Printer, Search, Tag, X } from 'lucide-react'
 import { barcodeService } from '../../services/barcodeService'

@@ -7,6 +7,7 @@ from app.modules.dashboard import repository
 def company_overview(company_id):
     with database_connection() as connection, database_cursor(connection) as cursor:
         product_total = repository.product_count(cursor, company_id)
+        low_stock_total = repository.low_stock_count(cursor, company_id)
         product_rows = repository.inventory_chart(cursor, company_id)
         worker_row = repository.worker_counts(cursor, company_id)
         generated_at = repository.snapshot_time(cursor)
@@ -23,6 +24,7 @@ def company_overview(company_id):
         },
         "inventory": {
             "active_product_count": int(product_total),
+            "low_stock_product_count": int(low_stock_total),
             "items": [
                 {
                     "product_id": row[0],

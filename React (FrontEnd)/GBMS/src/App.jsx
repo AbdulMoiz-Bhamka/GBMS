@@ -14,6 +14,9 @@ import AdminLayout from './Components/Layout/AdminLayout'
 import RoleRoute from './auth/RoleRoute'
 import CompaniesPage from './pages/Companies/CompaniesPage'
 import InventoryPage from './pages/Inventory/InventoryPage'
+import RawMaterialsPage from './pages/Inventory/RawMaterialsPage'
+import FinishedGoodsInventoryPage from './pages/Inventory/FinishedGoodsInventoryPage'
+import GoodsReceiptsPage from './pages/GoodsReceipts/GoodsReceiptsPage'
 import UsersPage from './pages/Users/UsersPage'
 import SuppliersPage from './pages/Suppliers/SuppliersPage'
 import PurchaseOrdersPage from './pages/Purchasing/PurchaseOrdersPage'
@@ -227,6 +230,11 @@ function App() {
           </Route>
           <Route element={<RoleRoute requiredPermission="inventory.view" requiresCompany />}>
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/raw-materials" element={<RawMaterialsPage />} />
+            <Route path="/finished-goods" element={<FinishedGoodsInventoryPage />} />
+          </Route>
+          <Route element={<RoleRoute requiredPermission="inventory.stock.receive" requiresCompany />}>
+            <Route path="/goods-receipts" element={<GoodsReceiptsPage />} />
           </Route>
           <Route element={<RoleRoute requiredPermission="inventory.barcode.manage" requiresCompany />}>
             <Route path="/barcodes" element={<BarcodesPage />} />

@@ -4,7 +4,8 @@ PRODUCT_SELECT = """SELECT p.ProductID, p.SKU, p.ProductName, p.ProductType,
     p.CategoryID, c.CategoryName, p.UnitID, u.UnitCode, u.UnitName,
     p.Description, p.ReorderLevel, p.IsActive, p.CreatedAt, p.UpdatedAt,
     p.QuantityOnHand, p.VariantDesign, p.VariantSize, p.VariantColor,
-    p.SellingPrice, p.BarcodeValue
+    p.SellingPrice, p.BarcodeValue,
+    CASE WHEN p.IsActive = 1 AND p.QuantityOnHand <= p.ReorderLevel THEN 1 ELSE 0 END AS IsLowStock
     FROM dbo.Products AS p
     LEFT JOIN dbo.ProductCategories AS c
       ON c.CategoryID = p.CategoryID AND c.CompanyID = p.CompanyID
@@ -33,6 +34,7 @@ def serialize_product(row):
         "variant_color": row[17],
         "selling_price": row[18],
         "barcode_value": row[19],
+        "is_low_stock": bool(row[20]) if len(row) > 20 else False,
     }
 
 
@@ -77,7 +79,7 @@ def active_unit_exists(cursor, unit_id):
     ).fetchone()
 
 
-def list_products(cursor, company_id, search, category_id, limit, offset):
+def list_products(cursor, company_id, search, category_id, limit, offset, low_stock_only=False, sort_by="name", product_type=None):
     conditions = ["p.CompanyID = ?"]
     params = [company_id]
     if search:
@@ -86,12 +88,22 @@ def list_products(cursor, company_id, search, category_id, limit, offset):
     if category_id is not None:
         conditions.append("p.CategoryID = ?")
         params.append(category_id)
+    if product_type is not None:
+        conditions.append("p.ProductType = ?")
+        params.append(product_type)
+    if low_stock_only:
+        conditions.extend(["p.IsActive = 1", "p.QuantityOnHand <= p.ReorderLevel"])
     where = " WHERE " + " AND ".join(conditions)
     total = cursor.execute(
         f"SELECT COUNT(*) FROM dbo.Products AS p{where}", *params
     ).fetchone()[0]
+    ordering = {
+        "name": "p.ProductName, p.ProductID",
+        "quantity": "p.QuantityOnHand ASC, p.ProductName, p.ProductID",
+        "reorder_level": "p.ReorderLevel ASC, p.ProductName, p.ProductID",
+    }[sort_by]
     rows = cursor.execute(
-        f"{PRODUCT_SELECT}{where} ORDER BY p.ProductName, p.ProductID "
+        f"{PRODUCT_SELECT}{where} ORDER BY {ordering} "
         "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY",
         *params,
         offset,
@@ -140,7 +152,6 @@ def update_product(cursor, company_id, product_id, values):
         "unit_id": "UnitID",
         "category_id": "CategoryID",
         "description": "Description",
-        "quantity_on_hand": "QuantityOnHand",
         "reorder_level": "ReorderLevel",
         "variant_design": "VariantDesign",
         "variant_size": "VariantSize",
@@ -156,6 +167,126 @@ def update_product(cursor, company_id, product_id, values):
         "WHERE CompanyID = ? AND ProductID = ?",
         *params,
     )
+
+
+def get_product_stock_for_update(cursor, company_id, product_id):
+    return cursor.execute(
+        """SELECT ProductID, ProductType, UnitID, QuantityOnHand, ReorderLevel, IsActive
+             FROM dbo.Products WITH (UPDLOCK, ROWLOCK)
+            WHERE CompanyID = ? AND ProductID = ?""",
+        company_id, product_id,
+    ).fetchone()
+
+
+def get_idempotent_transaction(cursor, company_id, idempotency_key):
+    return cursor.execute(
+        """SELECT InventoryTransactionID, CompanyID, ProductID, TransactionType,
+                  QuantityChanged, PreviousBalance, NewBalance, SupplierID, PurchaseOrderID,
+                  ReferenceNumber, CreatedByUserID, TransactionAt, Notes
+             FROM dbo.InventoryTransactions WITH (UPDLOCK, HOLDLOCK)
+            WHERE CompanyID = ? AND IdempotencyKey = ?""",
+        company_id, str(idempotency_key),
+    ).fetchone()
+
+
+def supplier_is_active(cursor, company_id, supplier_id):
+    return cursor.execute(
+        "SELECT 1 FROM dbo.Suppliers WHERE CompanyID = ? AND SupplierID = ? AND SupplierStatus = N'ACTIVE'",
+        company_id, supplier_id,
+    ).fetchone()
+
+
+def supplier_belongs_to_company(cursor, company_id, supplier_id):
+    return cursor.execute(
+        "SELECT 1 FROM dbo.Suppliers WHERE CompanyID = ? AND SupplierID = ?",
+        company_id, supplier_id,
+    ).fetchone()
+
+
+def get_receipt_purchase_order(cursor, company_id, purchase_order_id, product_id):
+    return cursor.execute(
+        """SELECT po.SupplierID, po.Status
+             FROM dbo.PurchaseOrders po
+            WHERE po.CompanyID = ? AND po.PurchaseOrderID = ?
+              AND EXISTS (
+                  SELECT 1 FROM dbo.PurchaseOrderItems i
+                   WHERE i.CompanyID = po.CompanyID AND i.PurchaseOrderID = po.PurchaseOrderID
+                     AND i.ProductID = ?
+              )""",
+        company_id, purchase_order_id, product_id,
+    ).fetchone()
+
+
+def update_stock_balance(cursor, company_id, product_id, previous_balance, new_balance):
+    return cursor.execute(
+        """UPDATE dbo.Products SET QuantityOnHand = ?, UpdatedAt = SYSUTCDATETIME()
+            WHERE CompanyID = ? AND ProductID = ? AND QuantityOnHand = ?""",
+        new_balance, company_id, product_id, previous_balance,
+    )
+
+
+def insert_inventory_transaction(cursor, *, company_id, product_id, transaction_type,
+                                 quantity_changed, previous_balance, new_balance,
+                                 supplier_id, purchase_order_id, reference_number,
+                                 created_by_user_id, notes, idempotency_key,
+                                 material_lot_id=None, goods_receipt_id=None,
+                                 production_batch_id=None):
+    return cursor.execute(
+        """INSERT INTO dbo.InventoryTransactions
+             (CompanyID, ProductID, TransactionType, QuantityChanged, PreviousBalance,
+              NewBalance, SupplierID, PurchaseOrderID, ReferenceNumber,
+              CreatedByUserID, Notes, IdempotencyKey, MaterialLotID,
+              GoodsReceiptID, ProductionBatchID)
+           OUTPUT INSERTED.InventoryTransactionID, INSERTED.CompanyID, INSERTED.ProductID,
+                  INSERTED.TransactionType, INSERTED.QuantityChanged, INSERTED.PreviousBalance,
+                  INSERTED.NewBalance, INSERTED.SupplierID, INSERTED.PurchaseOrderID,
+                  INSERTED.ReferenceNumber, INSERTED.CreatedByUserID, INSERTED.TransactionAt,
+                  INSERTED.Notes
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        company_id, product_id, transaction_type, quantity_changed, previous_balance,
+        new_balance, supplier_id, purchase_order_id, reference_number,
+        created_by_user_id, notes, str(idempotency_key), material_lot_id,
+        goods_receipt_id, production_batch_id,
+    ).fetchone()
+
+
+def list_stock_transactions(cursor, company_id, product_id, transaction_type,
+                            date_from, date_to, limit, offset):
+    conditions = ["t.CompanyID = ?", "t.ProductID = ?"]
+    params = [company_id, product_id]
+    if transaction_type:
+        conditions.append("t.TransactionType = ?"); params.append(transaction_type)
+    if date_from:
+        conditions.append("t.TransactionAt >= ?"); params.append(date_from)
+    if date_to:
+        conditions.append("t.TransactionAt < DATEADD(day, 1, ?)"); params.append(date_to)
+    where = " AND ".join(conditions)
+    total = cursor.execute(
+        f"SELECT COUNT_BIG(*) FROM dbo.InventoryTransactions t WHERE {where}", *params
+    ).fetchone()[0]
+    rows = cursor.execute(
+        f"""SELECT t.InventoryTransactionID,t.TransactionType,t.QuantityChanged,
+                  t.PreviousBalance,t.NewBalance,t.SupplierID,s.SupplierName,
+                  t.PurchaseOrderID,po.PurchaseOrderNumber,t.ReferenceNumber,
+                  t.CreatedByUserID,u.FullName,t.TransactionAt,t.Notes
+             FROM dbo.InventoryTransactions t
+             LEFT JOIN dbo.Suppliers s ON s.CompanyID=t.CompanyID AND s.SupplierID=t.SupplierID
+             LEFT JOIN dbo.PurchaseOrders po ON po.CompanyID=t.CompanyID AND po.PurchaseOrderID=t.PurchaseOrderID
+             LEFT JOIN dbo.Users u ON u.UserID=t.CreatedByUserID
+            WHERE {where}
+            ORDER BY t.TransactionAt DESC,t.InventoryTransactionID DESC
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY""",
+        *params, offset, limit,
+    ).fetchall()
+    return rows, total
+
+
+def count_low_stock(cursor, company_id):
+    return cursor.execute(
+        """SELECT COUNT_BIG(*) FROM dbo.Products
+            WHERE CompanyID = ? AND IsActive = 1 AND QuantityOnHand <= ReorderLevel""",
+        company_id,
+    ).fetchone()[0]
 
 
 def update_product_status(cursor, company_id, product_id, is_active):

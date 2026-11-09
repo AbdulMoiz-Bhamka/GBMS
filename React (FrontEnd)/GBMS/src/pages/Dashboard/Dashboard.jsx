@@ -152,9 +152,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!canViewCompanyOverview) return undefined
-    refreshOverview()
+    const initialRefresh = window.setTimeout(refreshOverview, 0)
     const interval = window.setInterval(refreshOverview, REFRESH_INTERVAL_MS)
-    return () => window.clearInterval(interval)
+    window.addEventListener('gbms:inventory-stock-changed', refreshOverview)
+    return () => {
+      window.clearTimeout(initialRefresh)
+      window.clearInterval(interval)
+      window.removeEventListener('gbms:inventory-stock-changed', refreshOverview)
+    }
   }, [canViewCompanyOverview, refreshOverview])
 
   return (
@@ -180,7 +185,7 @@ export default function DashboardPage() {
           </article>
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-slate-500">Active products</p><p className="mt-3 text-3xl font-semibold tracking-tight text-slate-800">{overview.inventory.active_product_count}</p>
-            <p className="mt-2 text-sm text-slate-500">Products with on-hand stock levels</p>
+            <p className="mt-2 text-sm text-slate-500">Products with on-hand stock levels</p><p className="mt-2 text-sm font-medium text-rose-700">{overview.inventory.low_stock_product_count || 0} at or below reorder level</p>
           </article>
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-slate-500">Worker accounts</p><p className="mt-3 text-3xl font-semibold tracking-tight text-slate-800">{overview.workers.total}</p>

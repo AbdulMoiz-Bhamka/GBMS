@@ -1,5 +1,6 @@
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -61,7 +62,6 @@ class ProductUpdate(BaseModel):
     variant_size: str | None = Field(default=None, max_length=40)
     variant_color: str | None = Field(default=None, max_length=50)
     selling_price: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
-    quantity_on_hand: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=3)
     reorder_level: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=3)
 
     @field_validator("product_name")
@@ -83,3 +83,29 @@ class ProductUpdate(BaseModel):
 class ProductStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     is_active: bool
+
+
+class StockReceiptCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    received_quantity: Decimal = Field(gt=0, max_digits=18, decimal_places=3)
+    supplier_id: int | None = Field(default=None, gt=0)
+    purchase_order_id: int | None = Field(default=None, gt=0)
+    reference_number: str | None = Field(default=None, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+    idempotency_key: UUID
+
+
+class StockIssueCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    issued_quantity: Decimal = Field(gt=0, max_digits=18, decimal_places=3)
+    reference_number: str | None = Field(default=None, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+    idempotency_key: UUID
+
+
+class StockAdjustmentCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    quantity_delta: Decimal = Field(ne=0, max_digits=18, decimal_places=3)
+    reference_number: str | None = Field(default=None, max_length=120)
+    notes: str = Field(min_length=1, max_length=1000)
+    idempotency_key: UUID

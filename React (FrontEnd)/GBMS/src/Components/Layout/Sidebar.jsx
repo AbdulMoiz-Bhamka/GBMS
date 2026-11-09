@@ -5,6 +5,8 @@ import {
   Settings, ShoppingCart, Users, Wallet, Warehouse, X,
 } from 'lucide-react'
 import { useAuth } from '../../auth/useAuth'
+import { useCallback, useEffect, useState } from 'react'
+import { inventoryService } from '../../services/inventoryService'
 import { canSeeCompanyModule } from './navigationAccess'
 
 export default function Sidebar({ isOpen = false, onClose = () => {} }) {
@@ -12,6 +14,17 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
   const isSuperAdmin = user?.role_name === 'SUPER_ADMIN'
   const isWorker = user?.role_name === 'WORKER'
   const hasPermission = (code) => canSeeCompanyModule(user, code)
+  const [lowStockCount, setLowStockCount] = useState(0)
+  const refreshLowStock = useCallback(() => {
+    setLowStockCount(0)
+    if (!user?.company_id || !user?.permissions?.includes('inventory.view')) return
+    inventoryService.lowStockCount().then((result) => setLowStockCount(result.count || 0)).catch(() => setLowStockCount(0))
+  }, [user?.company_id, user?.permissions])
+  useEffect(() => {
+    refreshLowStock()
+    window.addEventListener('gbms:inventory-stock-changed', refreshLowStock)
+    return () => window.removeEventListener('gbms:inventory-stock-changed', refreshLowStock)
+  }, [refreshLowStock])
   const navigationGroups = [
     { title: 'OVERVIEW', items: [{ label: 'Overview', path: '/dashboard', icon: BarChart3, available: true }] },
     ...(isSuperAdmin ? [{ title: 'PLATFORM', items: [{ label: 'Companies', path: '/companies', icon: Building2, available: true }] }] : []),
@@ -54,7 +67,7 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
                   const Icon = item.icon
                   return item.available ? (
                     <NavLink key={item.path} to={item.path} onClick={onClose} className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${isActive ? 'bg-[#edf3f6] font-semibold text-[#345c74]' : 'text-[#526574] hover:bg-[#f7f9fa] hover:text-[#345c74]'}`}>
-                      <Icon size={17} strokeWidth={1.8} /><span>{item.label}</span>
+                      <Icon size={17} strokeWidth={1.8} /><span>{item.label}</span>{item.path === '/inventory' && lowStockCount > 0 && <span className="ml-auto rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700" aria-label={`${lowStockCount} low stock products`}>{lowStockCount}</span>}
                     </NavLink>
                   ) : (
                     <div key={item.label} title="This module is not available yet" aria-disabled="true" className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400">

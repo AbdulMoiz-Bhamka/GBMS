@@ -1,5 +1,7 @@
 import base64
 import secrets
+from decimal import Decimal
+from uuid import uuid4
 
 import barcode
 import pyodbc
@@ -67,10 +69,11 @@ def list_units():
     ]
 
 
-def list_products(company_id, search, category_id, limit, offset):
+def list_products(company_id, search, category_id, limit, offset, low_stock_only=False, sort_by="name", product_type=None):
     with database_connection() as connection, database_cursor(connection) as cursor:
         rows, total = repository.list_products(
-            cursor, company_id, search.strip(), category_id, limit, offset
+            cursor, company_id, search.strip(), category_id, limit, offset,
+            low_stock_only, sort_by, product_type,
         )
     return {
         "items": [repository.serialize_product(row) for row in rows],
@@ -87,7 +90,113 @@ def _get_company_product(cursor, company_id, product_id):
     return row
 
 
-def create_product(company_id, payload: ProductCreate):
+def _serialize_stock_transaction(row, already_processed=False):
+    return {
+        "transaction_id": row[0],
+        "company_id": row[1],
+        "product_id": row[2],
+        "transaction_type": row[3],
+        "quantity_changed": row[4],
+        "previous_balance": row[5],
+        "new_balance": row[6],
+        "supplier_id": row[7],
+        "purchase_order_id": row[8],
+        "reference_number": row[9],
+        "created_by_user_id": row[10],
+        "transaction_at": row[11],
+        "notes": row[12],
+        "already_processed": already_processed,
+    }
+
+
+def record_stock_transaction(company_id, product_id, user_id, *, transaction_type,
+                             quantity_changed, idempotency_key, supplier_id=None,
+                             purchase_order_id=None, reference_number=None, notes=None):
+    quantity_changed = Decimal(quantity_changed)
+    if quantity_changed == 0:
+        raise HTTPException(status_code=422, detail="Stock quantity must be greater than zero or less than zero for an adjustment.")
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        existing_transaction = repository.get_idempotent_transaction(cursor, company_id, idempotency_key)
+        if existing_transaction:
+            same_request = (
+                existing_transaction[2] == product_id
+                and existing_transaction[3] == transaction_type
+                and Decimal(existing_transaction[4]) == quantity_changed
+                and existing_transaction[7] == supplier_id
+                and existing_transaction[8] == purchase_order_id
+                and existing_transaction[9] == reference_number
+                and existing_transaction[12] == notes
+            )
+            if not same_request:
+                raise HTTPException(status_code=409, detail="This stock request key was already used for a different request.")
+            return _serialize_stock_transaction(existing_transaction, already_processed=True)
+
+        product = repository.get_product_stock_for_update(cursor, company_id, product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found for this company.")
+        if not bool(product[5]):
+            raise HTTPException(status_code=409, detail="Activate the product before changing its stock.")
+        previous_balance = Decimal(product[3])
+        new_balance = previous_balance + quantity_changed
+        if new_balance < 0:
+            raise HTTPException(status_code=422, detail="The transaction would make stock negative.")
+
+        if transaction_type == "STOCK_RECEIPT":
+            if supplier_id is not None and not repository.supplier_is_active(cursor, company_id, supplier_id):
+                raise HTTPException(status_code=422, detail="Select an active supplier from your company.")
+            if purchase_order_id is not None:
+                order = repository.get_receipt_purchase_order(cursor, company_id, purchase_order_id, product_id)
+                if not order or order[1] not in {"SUBMITTED", "PARTIALLY_RECEIVED"}:
+                    raise HTTPException(status_code=422, detail="Select an open purchase order from this company that contains this product.")
+                if supplier_id is not None and order[0] != supplier_id:
+                    raise HTTPException(status_code=422, detail="The selected supplier does not match the purchase order.")
+                supplier_id = order[0]
+                if not repository.supplier_belongs_to_company(cursor, company_id, supplier_id):
+                    raise HTTPException(status_code=422, detail="The purchase order supplier is not available to this company.")
+        elif supplier_id is not None or purchase_order_id is not None:
+            raise HTTPException(status_code=422, detail="Supplier and purchase order references are only available for stock receipts.")
+
+        updated = repository.update_stock_balance(
+            cursor, company_id, product_id, previous_balance, new_balance
+        )
+        if updated.rowcount != 1:
+            raise HTTPException(status_code=409, detail="Stock changed concurrently. Reload and submit again.")
+        transaction = repository.insert_inventory_transaction(
+            cursor, company_id=company_id, product_id=product_id,
+            transaction_type=transaction_type, quantity_changed=quantity_changed,
+            previous_balance=previous_balance, new_balance=new_balance,
+            supplier_id=supplier_id, purchase_order_id=purchase_order_id,
+            reference_number=reference_number, created_by_user_id=user_id,
+            notes=notes, idempotency_key=idempotency_key,
+        )
+        connection.commit()
+    return _serialize_stock_transaction(transaction)
+
+
+def stock_transaction_history(company_id, product_id, transaction_type, date_from, date_to, limit, offset):
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        _get_company_product(cursor, company_id, product_id)
+        rows, total = repository.list_stock_transactions(
+            cursor, company_id, product_id, transaction_type, date_from, date_to, limit, offset
+        )
+    return {
+        "items": [{
+            "transaction_id": r[0], "transaction_type": r[1], "quantity_changed": r[2],
+            "previous_balance": r[3], "new_balance": r[4], "supplier_id": r[5],
+            "supplier_name": r[6], "purchase_order_id": r[7], "purchase_order_number": r[8],
+            "reference_number": r[9], "created_by_user_id": r[10], "created_by_name": r[11],
+            "transaction_at": r[12], "notes": r[13],
+        } for r in rows], "total": total, "limit": limit, "offset": offset,
+    }
+
+
+def low_stock_count(company_id):
+    with database_connection() as connection, database_cursor(connection) as cursor:
+        count = repository.count_low_stock(cursor, company_id)
+    return {"count": int(count)}
+
+
+def create_product(company_id, created_by_user_id, payload: ProductCreate):
     if payload.product_type == "RAW_MATERIAL" and payload.selling_price is not None:
         raise HTTPException(status_code=422, detail="Selling price is only available for finished goods.")
     with database_connection() as connection, database_cursor(connection) as cursor:
@@ -95,6 +204,15 @@ def create_product(company_id, payload: ProductCreate):
         _ensure_unit(cursor, payload.unit_id)
         try:
             product_id = repository.insert_product(cursor, company_id, payload)
+            if payload.quantity_on_hand > 0:
+                repository.insert_inventory_transaction(
+                    cursor, company_id=company_id, product_id=product_id,
+                    transaction_type="OPENING_STOCK", quantity_changed=payload.quantity_on_hand,
+                    previous_balance=Decimal("0"), new_balance=payload.quantity_on_hand,
+                    supplier_id=None, purchase_order_id=None, reference_number=None,
+                    created_by_user_id=created_by_user_id, notes="Opening stock at product creation.",
+                    idempotency_key=uuid4(),
+                )
             row = _get_company_product(cursor, company_id, product_id)
             connection.commit()
         except pyodbc.IntegrityError as exc:
@@ -112,7 +230,7 @@ def update_product(company_id, product_id, payload: ProductUpdate):
     values = payload.model_dump(exclude_unset=True)
     if not values:
         raise HTTPException(status_code=400, detail="Provide at least one product field to update.")
-    non_nullable = {"sku", "product_name", "product_type", "unit_id", "quantity_on_hand", "reorder_level"}
+    non_nullable = {"sku", "product_name", "product_type", "unit_id", "reorder_level"}
     if any(values.get(key) is None for key in non_nullable if key in values):
         raise HTTPException(status_code=422, detail="Required product fields cannot be empty.")
     with database_connection() as connection, database_cursor(connection) as cursor:

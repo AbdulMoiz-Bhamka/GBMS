@@ -8,6 +8,14 @@ def product_count(cursor, company_id):
     ).fetchone()[0]
 
 
+def low_stock_count(cursor, company_id):
+    return cursor.execute(
+        """SELECT COUNT_BIG(*) FROM dbo.Products
+            WHERE CompanyID = ? AND IsActive = 1 AND QuantityOnHand <= ReorderLevel""",
+        company_id,
+    ).fetchone()[0]
+
+
 def inventory_chart(cursor, company_id, limit=12):
     return cursor.execute(
         """SELECT TOP (?) p.ProductID, p.ProductName, p.QuantityOnHand,
