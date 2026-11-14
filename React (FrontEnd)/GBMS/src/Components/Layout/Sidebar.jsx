@@ -2,7 +2,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   ArrowUpRight, BarChart3, Barcode, Building2, ClipboardList, Layers3,
-  Settings, ShoppingCart, Users, Wallet, Warehouse, X,
+  PackageCheck, Settings, ShoppingCart, Users, Wallet, Warehouse, X,
 } from 'lucide-react'
 import { useAuth } from '../../auth/useAuth'
 import { useCallback, useEffect, useState } from 'react'
@@ -10,7 +10,7 @@ import { inventoryService } from '../../services/inventoryService'
 import { canSeeCompanyModule } from './navigationAccess'
 
 export default function Sidebar({ isOpen = false, onClose = () => {} }) {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const isSuperAdmin = user?.role_name === 'SUPER_ADMIN'
   const isWorker = user?.role_name === 'WORKER'
   const hasPermission = (code) => canSeeCompanyModule(user, code)
@@ -21,17 +21,20 @@ export default function Sidebar({ isOpen = false, onClose = () => {} }) {
     inventoryService.lowStockCount().then((result) => setLowStockCount(result.count || 0)).catch(() => setLowStockCount(0))
   }, [user?.company_id, user?.permissions])
   useEffect(() => {
+    // Don't fire API calls while auth is still initialising from sessionStorage
+    if (isLoading) return undefined
     refreshLowStock()
     window.addEventListener('gbms:inventory-stock-changed', refreshLowStock)
     return () => window.removeEventListener('gbms:inventory-stock-changed', refreshLowStock)
-  }, [refreshLowStock])
+  }, [isLoading, refreshLowStock])
   const navigationGroups = [
     { title: 'OVERVIEW', items: [{ label: 'Overview', path: '/dashboard', icon: BarChart3, available: true }] },
     ...(isSuperAdmin ? [{ title: 'PLATFORM', items: [{ label: 'Companies', path: '/companies', icon: Building2, available: true }] }] : []),
-    ...((hasPermission('users.view') || hasPermission('inventory.view') || hasPermission('inventory.barcode.manage') || hasPermission('suppliers.view') || hasPermission('purchasing.view')) ? [{ title: 'COMPANY', items: [
+    ...((hasPermission('users.view') || hasPermission('inventory.view') || hasPermission('inventory.stock.receive') || hasPermission('inventory.barcode.manage') || hasPermission('suppliers.view') || hasPermission('purchasing.view')) ? [{ title: 'COMPANY', items: [
       ...(hasPermission('users.view') ? [{ label: 'Team and access', path: '/users', icon: Users, available: true }] : []),
       ...(hasPermission('inventory.view') ? [{ label: 'Inventory', path: '/inventory', icon: Warehouse, available: true }] : []),
-      ...(hasPermission('inventory.barcode.manage') ? [{ label: 'Generate Barcode', path: '/barcodes', icon: Barcode, available: true }] : []),
+      ...(hasPermission('inventory.stock.receive') ? [{ label: 'Goods receipts', path: '/goods-receipts', icon: PackageCheck, available: true }] : []),
+      ...(hasPermission('inventory.barcode.manage') ? [{ label: 'Finished goods & barcodes', path: '/barcodes', icon: Barcode, available: true }] : []),
       ...(hasPermission('suppliers.view') ? [{ label: 'Suppliers', path: '/suppliers', icon: ShoppingCart, available: true }] : []),
       ...(hasPermission('purchasing.view') ? [{ label: 'Purchase orders', path: '/purchase-orders', icon: ShoppingCart, available: true }] : []),
     ] }] : []),

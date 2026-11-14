@@ -15,6 +15,12 @@ GO
 USE [GBMS_Database];
 GO
 
+SELECT
+    @@SERVERNAME AS ServerName,
+    DB_NAME() AS DatabaseName,
+    ORIGINAL_LOGIN() AS LoginName;
+
+
 IF OBJECT_ID(N'dbo.Roles', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Roles

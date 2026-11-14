@@ -131,7 +131,8 @@ def adjust_stock(
 def get_stock_history(
     product_id: int = Path(gt=0),
     transaction_type: Literal[
-        "OPENING_STOCK", "STOCK_RECEIPT", "STOCK_ISSUE", "PRODUCTION_CONSUMPTION",
+        "OPENING_STOCK", "STOCK_RECEIPT", "STOCK_ISSUE", "GOODS_RECEIPT",
+        "MATERIAL_ISSUE", "MATERIAL_CONSUMPTION", "PRODUCTION_CONSUMPTION",
         "PRODUCTION_OUTPUT", "STOCK_ADJUSTMENT",
     ] | None = Query(default=None),
     date_from: date | None = Query(default=None),

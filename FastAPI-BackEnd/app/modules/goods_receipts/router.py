@@ -33,3 +33,11 @@ def get_lot(lot_id: int = Path(gt=0),
         from fastapi import HTTPException
         raise HTTPException(404, "Material lot not found for this company.")
     return lot
+
+@router.get("/barcode/{barcode_value}")
+def lookup_by_barcode(
+    barcode_value: str = Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),
+    user=Depends(require_company_permission("inventory.view")),
+):
+    """Resolve any BarcodeRegistry entry by its value. Returns entity type and details."""
+    return service.lookup_barcode(user["company_id"], barcode_value)

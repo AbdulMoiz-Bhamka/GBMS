@@ -76,7 +76,8 @@ def create_receipt(company_id, actor_id, payload):
                 repository.insert_barcode(cursor, company_id, barcode_value, lot_id, actor_id)
 
             refreshed_lines = repository.list_order_lines(cursor, company_id, payload.purchase_order_id)
-            completed = all(Decimal(row[10]) >= Decimal(row[8]) for row in refreshed_lines)
+            # row[11] = total received so far, row[8] = ordered quantity
+            completed = all(Decimal(str(row[11])) >= Decimal(str(row[8])) for row in refreshed_lines)
             next_status = "COMPLETED" if completed else "PARTIALLY_RECEIVED"
             if next_status != order_status:
                 cursor.execute(
@@ -116,7 +117,18 @@ def serialize_receipt(header, lines, already_processed=False):
 
 def receipt_options(company_id, purchase_order_id):
     with database_connection() as connection, database_cursor(connection) as cursor:
-        orders = repository.list_open_orders(cursor, company_id)
+        try:
+            orders = repository.list_open_orders(cursor, company_id)
+        except pyodbc.ProgrammingError as exc:
+            if "Invalid object name" in str(exc) or "42S02" in str(exc):
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The goods receipt tables are not available. "
+                        "Run the full GBMS_DB.sql migration script in SSMS to create them."
+                    ),
+                ) from exc
+            raise
         if purchase_order_id is None:
             return {"purchase_orders": [serialize_order_option(row) for row in orders], "items": []}
         order = repository.get_order_for_update(cursor, company_id, purchase_order_id)
@@ -139,7 +151,19 @@ def serialize_order_option(row):
 
 def list_material_lots(company_id, product_id=None):
     with database_connection() as connection, database_cursor(connection) as cursor:
-        rows = repository.list_lots(cursor, company_id, product_id)
+        try:
+            rows = repository.list_lots(cursor, company_id, product_id)
+        except pyodbc.ProgrammingError as exc:
+            # Raised when the manufacturing tables don't exist yet (migration not applied).
+            if "Invalid object name" in str(exc) or "42S02" in str(exc):
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The goods receipt tables are not available. "
+                        "Run the full GBMS_DB.sql migration script in SSMS to create them."
+                    ),
+                ) from exc
+            raise
     return [{"material_lot_id": r[0], "product_id": r[1], "sku": r[2], "product_name": r[3],
              "goods_receipt_id": r[4], "receipt_number": r[5], "purchase_order_id": r[6],
              "purchase_order_number": r[7], "supplier_id": r[8], "supplier_name": r[9],

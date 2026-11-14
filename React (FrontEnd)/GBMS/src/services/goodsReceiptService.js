@@ -15,4 +15,5 @@ export const goodsReceiptService = {
   lots: (params = {}) => apiRequest(`/api/v1/goods-receipts/lots${queryString(params)}`),
   lotLabel: (lotId) => apiRequest(`/api/v1/goods-receipts/lots/${lotId}/label`),
   lot: (lotId) => apiRequest(`/api/v1/goods-receipts/lots/${lotId}`),
+  lookupBarcode: (value) => apiRequest(`/api/v1/goods-receipts/barcode/${encodeURIComponent(value)}`),
 }
